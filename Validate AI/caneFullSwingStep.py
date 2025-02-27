@@ -116,7 +116,7 @@ class CaneEnv(gym.Env):
         # Now, update the cane's position based on the original movement action.
         pos, _ = p.getBasePositionAndOrientation(self.cane_id)
         pos = np.array(pos)
-        step_size = 0.1
+        step_size = 0.3
         
         if action == 0:      # Move forward (+Y)
             new_pos = pos + np.array([0, step_size, 0])
@@ -165,6 +165,6 @@ if __name__ == "__main__":
             # For instance, randomly choose an action.
             action = env.action_space.sample()
             env.step(action)
-            time.sleep(0.3)
+            time.sleep(0.6)
     except KeyboardInterrupt:
         env.close()
