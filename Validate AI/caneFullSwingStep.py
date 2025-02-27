@@ -161,6 +161,7 @@ if __name__ == "__main__":
     
     try:
         while True:
+            # Testing if my github works
             # For testing, use the original action space (movement only).
             # For instance, randomly choose an action.
             action = env.action_space.sample()
