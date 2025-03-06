@@ -77,6 +77,7 @@ class CaneEnv(gym.Env):
         # Simulation time step for the swing cycle.
         self.dt = 1.0 / 240.0
         
+        
     def swing_cycle(self):
         """
         Perform a full swing cycle (covering a total of 160°) before taking a step.
