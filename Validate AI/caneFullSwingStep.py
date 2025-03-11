@@ -1,6 +1,7 @@
 ''' 
 This implementation considers swinging before stepping
 Problem: the cane swings from a middle axis, for 
+Current working implementation of cane swining
 '''
 
 import gymnasium as gym
