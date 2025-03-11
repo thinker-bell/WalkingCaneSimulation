@@ -60,18 +60,35 @@ class CaneEnv(gym.Env):
                                          basePosition=self.cane_start_pos,
                                          baseOrientation=initial_orientation)
         
-        #Lines to add create the LiDAR sensor: 
-        lidar_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=[0.1, 0.1, 0.1])
-        lidar_visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=[0.1, 0.1, 0.1], rgbaColor=[1, 0, 0, 1])
+        """# Lines to add create the LiDAR sensor: 
+        lidar_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=[0.05, 0.05, 0.05])
+        lidar_visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=[0.05, 0.05, 0.05], rgbaColor=[1, 0, 0, 1])
         self.lidar_id = p.createMultiBody(baseMass=0.1, baseCollisionShapeIndex=lidar_collision_shape, baseVisualShapeIndex=lidar_visual_shape)
         
         # Attach the LiDAR to the cane
 
-        self.lidar_start_pos = [0, 0, self.cane_height/2]
+        #self.lidar_start_pos = [0, 0, self.cane_height/2]
+        
+        self.lidar_start_pos, self.lidar_start_orientation = p.getBasePositionAndOrientation(self.lidar_id)
         lidar_start_pos = [0, 0, self.cane_height/2]
         lidar_start_orientation = p.getQuaternionFromEuler([0, 0, 0])
         p.resetBasePositionAndOrientation(self.lidar_id, lidar_start_pos, lidar_start_orientation)
-        constraint_id = p.createConstraint(self.cane_id, -1, self.lidar_id, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0, 0, 1])
+        constraint_id = p.createConstraint(self.cane_id, -1, self.lidar_id, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0, 0, 1])"""
+
+        # Create the LiDAR cube
+        lidar_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=[0.05, 0.05, 0.05])
+        lidar_visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=[0.05, 0.05, 0.05], rgbaColor=[1, 0, 0, 1])
+        self.lidar_id = p.createMultiBody(baseMass=0.1, baseCollisionShapeIndex=lidar_collision_shape, baseVisualShapeIndex=lidar_visual_shape)
+        
+        # Create a fixed constraint between the cane and the LiDAR cube
+        constraint_id = p.createConstraint(self.cane_id, -1, self.lidar_id, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0, 0, self.cane_height/2])
+        
+        # Set the initial position of the LiDAR cube
+        lidar_start_pos = [0, 0, self.cane_height/2]
+        lidar_start_orientation = p.getQuaternionFromEuler([0, 0, 0])
+        p.resetBasePositionAndOrientation(self.lidar_id, lidar_start_pos, lidar_start_orientation)
+
+
 
 
         # Define the original action space (movement only).
@@ -109,7 +126,7 @@ class CaneEnv(gym.Env):
         # Get the current position (we keep it constant during the swing).
         pos, _ = p.getBasePositionAndOrientation(self.cane_id)
         pos = np.array(pos)
-        
+        '''
         for angle in full_cycle:
             self.current_swing_deg = angle
             new_orientation = p.getQuaternionFromEuler(
@@ -118,7 +135,21 @@ class CaneEnv(gym.Env):
             p.resetBasePositionAndOrientation(self.cane_id, pos.tolist(), new_orientation)
             p.stepSimulation()
             time.sleep(self.dt)
-        
+        '''
+        for angle in full_cycle:
+            self.current_swing_deg = angle
+            new_orientation = p.getQuaternionFromEuler(
+                [self.baseline_roll, self.baseline_pitch, math.radians(self.current_swing_deg)]
+            )
+            p.resetBasePositionAndOrientation(self.cane_id, pos.tolist(), new_orientation)
+            
+            # Remove the lines that reset the LiDAR's position and orientation
+            # p.resetBasePositionAndOrientation(self.lidar_id, lidar_pos.tolist(), lidar_orientation)
+            
+            p.stepSimulation()
+            time.sleep(self.dt)
+
+
         # After the cycle, reset swing angle to 0.
         self.current_swing_deg = 0
         final_orientation = p.getQuaternionFromEuler(
@@ -127,13 +158,22 @@ class CaneEnv(gym.Env):
         lidar_orientation = p.getQuaternionFromEuler([0, 0, math.radians(self.current_swing_deg)])
         
         #p.addUserDebugLine([0, 0, 0], p.getBasePositionAndOrientation(self.lidar_id)[0], [1, 0, 0], 2, 0.1)
-        p.resetBasePositionAndOrientation(self.lidar_id, self.lidar_start_pos, lidar_orientation)
-        p.resetBasePositionAndOrientation(self.cane_id, pos.tolist(), final_orientation)
+        #p.resetBasePositionAndOrientation(self.lidar_id, self.lidar_start_pos, lidar_orientation)
+        
+        cane_pos, _ = p.getBasePositionAndOrientation(self.cane_id)
+        lidar_pos = [cane_pos[0], cane_pos[1], cane_pos[2] + self.cane_height/2]
+        p.resetBasePositionAndOrientation(self.lidar_id, lidar_pos, lidar_orientation)
+        
+        
+        
         
 
     def step(self, action):
         # First, run a full swing cycle (160° total swing) before moving.
         self.swing_cycle()
+
+        # Create a fixed constraint between the cane and the LiDAR cube
+        constraint_id = p.createConstraint(self.cane_id, -1, self.lidar_id, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0, 0, self.cane_height/2])
         
         # Now, update the cane's position based on the original movement action.
         pos, _ = p.getBasePositionAndOrientation(self.cane_id)
@@ -156,7 +196,16 @@ class CaneEnv(gym.Env):
             [self.baseline_roll, self.baseline_pitch, math.radians(0)]
         )
         p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), final_orientation)
+
+        # Calculate the new position of the LiDAR cube
+        cane_pos, cane_orientation = p.getBasePositionAndOrientation(self.cane_id)
+        lidar_pos = [cane_pos[0], cane_pos[1], cane_pos[2] + self.cane_height/2]
+        lidar_orientation = p.getQuaternionFromEuler([0, 0, math.radians(0)])
+
+        # Update the LiDAR cube's position
+        #p.resetBasePositionAndOrientation(self.lidar_id, lidar_pos, lidar_orientation)
         
+
         # For observation, we return the cane's new center position.
         reward = new_pos[1]  # For example, reward based on forward progress.
         done = False
