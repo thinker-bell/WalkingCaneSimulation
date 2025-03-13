@@ -155,14 +155,15 @@ class CaneEnv(gym.Env):
         final_orientation = p.getQuaternionFromEuler(
             [self.baseline_roll, self.baseline_pitch, math.radians(self.current_swing_deg)]
         )
-        lidar_orientation = p.getQuaternionFromEuler([0, 0, math.radians(self.current_swing_deg)])
+        #lidar_orientation = p.getQuaternionFromEuler([self.baseline_roll, self.baseline_pitch, math.radians(self.current_swing_deg)])
+        lidar_orientation = p.getQuaternionFromEuler([0,0, math.radians(self.current_swing_deg)])
         
         #p.addUserDebugLine([0, 0, 0], p.getBasePositionAndOrientation(self.lidar_id)[0], [1, 0, 0], 2, 0.1)
         #p.resetBasePositionAndOrientation(self.lidar_id, self.lidar_start_pos, lidar_orientation)
         
         cane_pos, _ = p.getBasePositionAndOrientation(self.cane_id)
         lidar_pos = [cane_pos[0], cane_pos[1], cane_pos[2] + self.cane_height/2]
-        p.resetBasePositionAndOrientation(self.lidar_id, lidar_pos, lidar_orientation)
+        #p.resetBasePositionAndOrientation(self.lidar_id, lidar_pos, lidar_orientation)
         
         
         
