@@ -69,7 +69,7 @@ class CaneEnv(gym.Env):
                                             basePosition=base_pos,
                                             baseOrientation=initial_orientation,
                                             baseInertialFramePosition=inertial_pos)
-        
+        self.cane_id = 1  # Add this line
          
         self.lidar_start_pos = [0, 0, self.cane_height / 8]
 
@@ -91,136 +91,31 @@ class CaneEnv(gym.Env):
         
         # Simulation time step for the swing cycle.
         self.dt = 1.0 / 240.0
-    '''
+    
     def get_lidar_data(self):
         # Remove previous beam
-        if hasattr(self, 'beam_id'):
+        if hasattr(self, 'beam_id_primary'):
             p.removeUserDebugItem(self.beam_id)
-        
-        # Get the current position and orientation of the cane
-        cane_pos, cane_orientation = p.getBasePositionAndOrientation(self.cane_id)
-        cane_roll, cane_pitch, cane_yaw = p.getEulerFromQuaternion(cane_orientation)
-        
-        # Calculate the position of the LiDAR beam (move down the cane shaft)
-        lidar_offset = [0, -self.cane_radius, -self.cane_height / 4]  # Move down 1/4 of the cane height and offset from the center
-        rotated_offset = [
-            lidar_offset[0] * np.cos(cane_pitch) - lidar_offset[2] * np.sin(cane_pitch),
-            lidar_offset[1],
-            lidar_offset[0] * np.sin(cane_pitch) + lidar_offset[2] * np.cos(cane_pitch)
-        ]
-        lidar_pos = [
-            cane_pos[0] + rotated_offset[0] * np.cos(cane_yaw) - rotated_offset[1] * np.sin(cane_yaw),
-            cane_pos[1] + rotated_offset[0] * np.sin(cane_yaw) + rotated_offset[1] * np.cos(cane_yaw),
-            cane_pos[2] + rotated_offset[2]
-        ]
-        
-        # Calculate the direction of the beam (rotate 90 degrees to the left)
-        direction = [-np.sin(cane_yaw), np.cos(cane_yaw), -1]
-        
-        # Calculate the end point of the beam
-        step_size = 0.3
-        num_steps = 2
-        beam_end = [lidar_pos[0] + num_steps * step_size * direction[0],
-                    lidar_pos[1] + num_steps * step_size * direction[1],
-                    lidar_pos[2] + num_steps * step_size * direction[2]]
-        
-        # Visualize the beam
-        self.beam_id = p.addUserDebugLine(lidar_pos, beam_end, [1, 0, 0], 2, 0.1)
-        
-        # Perform ray casting and collision detection
-        result = p.rayTest(lidar_pos, beam_end)
-        
-        # Check if the ray hit an object
-        if result[0] != -1:  # if collision detected
-            if len(result) > 2:  # Check if result has at least 3 elements
-                closest_obstacle = result[2]  # record distance
-            else:
-                closest_obstacle = num_steps * step_size  # record maximum distance if no collision
-        else:
-            closest_obstacle = num_steps * step_size  # record maximum distance if no collision
-        
-        return closest_obstacle, None
-        
-    '''
-    '''
-    def get_lidar_data(self):
-        # Remove previous beam
-        if hasattr(self, 'beam_id'):
-            p.removeUserDebugItem(self.beam_id)
-        
-        # Get the current position and orientation of the cane
-        cane_pos, cane_orientation = p.getBasePositionAndOrientation(self.cane_id)
-        cane_roll, cane_pitch, cane_yaw = p.getEulerFromQuaternion(cane_orientation)
-        
-        
-        # LiDAR should be positioned at the lower 1/8th of the cane
-        lidar_offset = [0, 0, -self.cane_height / 8]  
-
-        # Rotate the offset to match the cane's orientation
-        rotated_offset = [
-            lidar_offset[0] * np.cos(cane_pitch) - lidar_offset[2] * np.sin(cane_pitch),
-            lidar_offset[1],
-            lidar_offset[0] * np.sin(cane_pitch) + lidar_offset[2] * np.cos(cane_pitch)
-        ]
-
-        # Compute the LiDAR world position
-        lidar_pos = [
-            cane_pos[0] + rotated_offset[0] * np.cos(cane_yaw) - rotated_offset[1] * np.sin(cane_yaw),
-            cane_pos[1] + rotated_offset[0] * np.sin(cane_yaw) + rotated_offset[1] * np.cos(cane_yaw),
-            cane_pos[2] + rotated_offset[2]
-        ]
-
-        # Make sure the LiDAR beam points straight forward (+Y direction in the cane's local frame)
-        direction = [np.cos(cane_yaw), np.sin(cane_yaw), 0]  # Only in the X-Y plane
-
-        # Calculate the end point of the beam
-        step_size = 0.5  # Increase step size if needed
-        num_steps = 4
-        beam_end = [lidar_pos[0] + num_steps * step_size * direction[0],
-                    lidar_pos[1] + num_steps * step_size * direction[1],
-                    lidar_pos[2] + num_steps * step_size * direction[2]]
-
-        # Visualize the beam
-        self.beam_id = p.addUserDebugLine(lidar_pos, beam_end, [1, 0, 0], 2, 0.1)
-        
-        # Perform ray casting and collision detection
-        result = p.rayTest(lidar_pos, beam_end)
-        
-        # Check if the ray hit an object
-        if result[0] != -1:  # if collision detected
-            if len(result) > 2:  # Check if result has at least 3 elements
-                closest_obstacle = result[2]  # record distance
-            else:
-                closest_obstacle = num_steps * step_size  # record maximum distance if no collision
-        else:
-            closest_obstacle = num_steps * step_size  # record maximum distance if no collision
-        
-        return closest_obstacle, None
-    '''
-    def get_lidar_data(self):
-        # Remove previous beam
-        if hasattr(self, 'beam_id'):
-            p.removeUserDebugItem(self.beam_id)
+        if hasattr(self, 'beam_id_secondary'):
+            p.removeUserDebugItem(self.beam_id_secondary)    
         
         # Get the current position and orientation of the cane
         cane_pos, cane_orientation = p.getBasePositionAndOrientation(self.cane_id)
         cane_roll, cane_pitch, cane_yaw = p.getEulerFromQuaternion(cane_orientation)
 
-        # Correct LiDAR offset (1/8th from the bottom)
+        # Primary Lidar 
         lidar_offset_z = -1.5 #- (self.cane_height / 2) + (self.cane_height / 100)  # Position from the bottom
-
-        # Adjust for cane’s rotation to ensure LiDAR remains properly aligned
         lidar_offset = [0, 0, lidar_offset_z]
         rotated_offset = p.rotateVector(cane_orientation, lidar_offset)
 
-        # Final LiDAR position relative to the cane
+        # Primary lidar pos
         lidar_pos = [
             cane_pos[0] + rotated_offset[0],
             cane_pos[1] + rotated_offset[1],
             cane_pos[2] + rotated_offset[2]
         ]
 
-        # LiDAR beam direction: should be straight ahead, regardless of cane tilt
+        # primary LiDAR beam direction: 
         beam_direction = [
             # Forward direction
             -math.sin(cane_yaw),  
@@ -228,7 +123,7 @@ class CaneEnv(gym.Env):
             -math.sin(45)                    # Keep level with the ground
         ]
 
-        # Compute end point of the LiDAR beam
+        # Compute end point of the primary LiDAR beam
         step_size = 0.3
         num_steps = 1.2
         beam_end = [
@@ -238,21 +133,78 @@ class CaneEnv(gym.Env):
         ]
 
         #p.addUserDebugLine(lidar_pos, beam_end, [1, 0, 0], 2, 0.1)
-
         # Draw the beam in PyBullet
         self.beam_id = p.addUserDebugLine(lidar_pos, beam_end, [1, 0, 0], 2, 0.1)
 
-        # Perform ray casting for object detection
-        result = p.rayTest(lidar_pos, beam_end)
+        ### SECONDARY LIDAR #########
+        # Secondary LiDAR position with an offset of -0.5 along the X-axis
+        lidar_offset_y = -0.7
+        secondary_lidar_offset = [0, 0, lidar_offset_y]  # -0.5 along X and same Z offset
+        rotated_secondary_offset = p.rotateVector(cane_orientation, secondary_lidar_offset)
 
-        # Check for obstacles
+        # Secondary LiDAR position
+        secondary_lidar_pos = [
+            cane_pos[0] + rotated_secondary_offset[0],
+            cane_pos[1] + rotated_secondary_offset[1],
+            cane_pos[2] + rotated_secondary_offset[2]
+        ]
+
+        secondary_beam_direction = [-math.sin(cane_yaw), math.cos(cane_yaw), 0]  # Same beam direction as primary
+
+        # Compute the end point of the secondary LiDAR beam
+        step_size = 0.3
+        num_steps = 3
+        beam_end_secondary = [
+            secondary_lidar_pos[0] + num_steps * step_size * secondary_beam_direction[0],
+            secondary_lidar_pos[1] + num_steps * step_size * secondary_beam_direction[1],
+            secondary_lidar_pos[2] + num_steps * step_size * secondary_beam_direction[2]
+        ]
+
+
+        self.beam_id_secondary = p.addUserDebugLine(secondary_lidar_pos, beam_end_secondary, [1, 0, 0], 2, 0.1)
+
+        # Perform ray casting for object detection
+        result_primary = p.rayTest(lidar_pos, beam_end)
+        result_secondary = p.rayTest(secondary_lidar_pos, beam_end_secondary)
+        print("prim ",result_primary)
+        print("sec ",result_secondary)
+        
+        #if result_secondary[0] == 1:
+            #print("Secondary beam hit the cane itself. Ignoring...")
+        
+
+
+        #################### Temp collision detection ###########
+        if result_primary[0] != -1:  # if collision detected
+            closest_obstacle_primary = result_primary[2] if len(result_primary) > 2 else num_steps * step_size
+        else:
+            closest_obstacle_primary = num_steps * step_size  # Max range if no collision
+
+        '''
+        if result_secondary[0] != -1:  # if collision detected
+            closest_obstacle_secondary = result_secondary[2] if len(result_secondary) > 2 else num_steps * step_size
+        else:
+            closest_obstacle_secondary = num_steps * step_size  # Max range if no collision
+        '''
+        if result_secondary[0] in [self.cane_id, -1]:
+            print("test")
+            closest_obstacle_secondary = None  # or you can set it to a default value
+        else:
+            closest_obstacle_secondary = result_secondary[2] if len(result_secondary) > 2 else num_steps * step_size
+        
+        
+        return closest_obstacle_primary, closest_obstacle_secondary
+
+        #return result_primary, result_secondary
+
+        '''# Check for obstacles
         if result[0] != -1:  # if collision detected
             closest_obstacle = result[2] if len(result) > 2 else num_steps * step_size
         else:
             closest_obstacle = num_steps * step_size  # Max range if no collision
 
-        return closest_obstacle, None
-
+        return closest_obstacle, None'''
+    
 
     def swing_cycle(self):
         """
@@ -278,8 +230,9 @@ class CaneEnv(gym.Env):
             p.resetBasePositionAndOrientation(self.cane_id, pos.tolist(), new_orientation)
             
             # Get LiDAR data during the swing
-            closest_obstacle, _ = self.get_lidar_data()
-            print(f"LiDAR Distance at {angle}°: {closest_obstacle:.2f} meters")
+            obstacle_prim, obstacle_sec = self.get_lidar_data()
+            print(f"LiDAR 1 Distance at {angle}°: {obstacle_prim:.2f} meters")
+            print(f"LiDAR 2 Distance at {angle}°: {obstacle_sec:.2f} meters")
             
             p.stepSimulation()
             time.sleep(self.dt)
