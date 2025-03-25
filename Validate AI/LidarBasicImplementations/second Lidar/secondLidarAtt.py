@@ -231,19 +231,23 @@ class CaneEnv(gym.Env):
             
             # Get LiDAR data during the swing
             obstacle_prim, obstacle_sec = self.get_lidar_data()
-            print(f"LiDAR 1 Distance at {angle}°: {obstacle_prim:.2f} meters")
-            print(f"LiDAR 2 Distance at {angle}°: {obstacle_sec:.2f} meters")
+            #print(f"LiDAR 1 Distance at {angle}°: {obstacle_prim:.2f} meters")
+            #print(f"LiDAR 2 Distance at {angle}°: {obstacle_sec:.2f} meters")
             
             p.stepSimulation()
             time.sleep(self.dt)
-        
+        '''
         # After the cycle, reset swing angle to 0.
         self.current_swing_deg = 0
         final_orientation = p.getQuaternionFromEuler(
             [self.baseline_roll, self.baseline_pitch, math.radians(90)]
         )
         p.resetBasePositionAndOrientation(self.cane_id, pos.tolist(), final_orientation)
-        
+        '''
+        # Maintain the cane's current orientation after the swing cycle.
+        _, orientation = p.getBasePositionAndOrientation(self.cane_id)
+        p.resetBasePositionAndOrientation(self.cane_id, pos.tolist(), orientation)   
+    '''
     def step(self, action):
         # First, run a full swing cycle (160° total swing) before moving.
         self.swing_cycle()
@@ -280,7 +284,103 @@ class CaneEnv(gym.Env):
         reward = new_pos[1]  # For example, reward based on forward progress.
         done = False
         return new_pos, reward, done, {}
-    
+    '''
+    ###############
+    def step(self, action):
+        """
+        Execute the specified action and update the cane's position.
+
+        Args:
+            action (int): The action to execute (0-8).
+
+        Returns:
+            tuple: (new_position, reward, done, {})
+        """
+
+        # First, run a full swing cycle (160° total swing) before moving.
+        self.swing_cycle()
+
+        # Now, update the cane's position based on the original movement action.
+        pos, _ = p.getBasePositionAndOrientation(self.cane_id)
+        pos = np.array(pos)
+        step_size = 0.3
+
+        # Define the rotation angles
+        rotation_angles = {
+            2: math.radians(30),  # short left
+            3: math.radians(60),  # medium left
+            4: math.radians(90),  # hard left
+            6: math.radians(-30),  # short right
+            7: math.radians(-60),  # medium right
+            8: math.radians(-90),  # hard right
+            9: math.radians(180)  # 180 deg turn around
+        }
+        '''
+        if action == 0:  # Take 1 step forward
+            print("forward")
+            new_pos = pos + np.array([0, step_size, 0])
+            new_orientation = p.getQuaternionFromEuler(
+                [self.baseline_roll, self.baseline_pitch, math.radians(90)]
+            )
+        elif action == 1:  # Stop
+            print("no move")
+            new_pos = pos
+            new_orientation = p.getQuaternionFromEuler(
+                [self.baseline_roll, self.baseline_pitch, math.radians(90)]
+            )
+        elif action in rotation_angles:  # Rotate
+            print("rotate")
+            new_pos = pos
+            new_orientation = p.getQuaternionFromEuler(
+                [self.baseline_roll, self.baseline_pitch, rotation_angles[action]]
+            )
+        else:
+            raise ValueError("Invalid action")
+        '''
+
+        ################
+
+        if action == 0:  # Take 1 step forward
+            print("")
+            print("")
+            print("forward")
+            print("")
+            print("")
+            new_pos = pos + np.array([0, step_size, 0])
+            _, new_orientation = p.getBasePositionAndOrientation(self.cane_id)
+        elif action == 1:  # Stop
+            print("")
+            print("")
+            print("no move")
+            print("")
+            print("")
+            new_pos = pos
+            _, new_orientation = p.getBasePositionAndOrientation(self.cane_id)
+        elif action in rotation_angles:  # Rotate
+            print("")
+            print("")
+            print("rotate")
+            print("")
+            print("")
+            new_pos = pos
+            new_orientation = p.getQuaternionFromEuler(
+                [self.baseline_roll, self.baseline_pitch, rotation_angles[action]]
+            )
+        else:
+            raise ValueError("Invalid action")
+
+
+        #############
+
+        # Update the cane's position and orientation.
+        p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), new_orientation)
+
+        # For observation, we return the cane's new center position.
+        reward = new_pos[1]  # For example, reward based on forward progress.
+        done = False
+        return new_pos, reward, done, {}
+    ###############
+
     def reset(self):
         self.current_swing_deg = 0
         initial_orientation = p.getQuaternionFromEuler(
