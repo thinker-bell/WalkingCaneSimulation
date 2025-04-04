@@ -304,7 +304,7 @@ class CaneEnv(gym.Env):
 
 
         # Check if the cane has reached the goal location
-        if distance_to_goal < 1 :  # Adjust the threshold value as needed
+        if distance_to_goal < 0.8 :  # Adjust the threshold value as needed
             # Stop the cane
             p.resetBaseVelocity(self.cane_id, [0, 0, 0], [0, 0, 0])
 
