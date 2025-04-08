@@ -111,9 +111,9 @@ class CaneEnv(gym.Env):
         # Simulation time step for the swing cycle.
         self.dt = 1.0 / 240.0
 
-
-        # ----------------- OBSTACLE -----------------
-        self.obstacle_location = np.array([-1.0, 1.0, 0.5])  # Adjust height to be half the box height
+        
+        # ----------------- OBSTACLE 1 -----------------
+        self.obstacle_location = np.array([-2.5, 1.0, 0.5])  # Adjust height to be half the box height
         self.obstacle_id = p.createMultiBody(
             baseMass=0,
             baseCollisionShapeIndex=p.createCollisionShape(
@@ -127,8 +127,24 @@ class CaneEnv(gym.Env):
             ),
             basePosition=self.obstacle_location
         )
+        '''
+        # ----------------- OBSTACLE 2 -----------------
+        self.obstacle_location = np.array([-2.5, 1.0, 0.5])  # Adjust height to be half the box height
+        self.obstacle_id = p.createMultiBody(
+            baseMass=0,
+            baseCollisionShapeIndex=p.createCollisionShape(
+                shapeType=p.GEOM_SPHERE,
+                halfExtents=[0.3, 0.3, 0.5]
+            ),
+            baseVisualShapeIndex=p.createVisualShape(
+                shapeType=p.GEOM_SPHERE,
+                halfExtents=[0.3, 0.3, 0.5],
+                rgbaColor=[0.7, 0.2, 0.2, 3]  # Reddish color
+            ),
+            basePosition=self.obstacle_location
+        )
+        '''
 
-    
     def get_lidar_data(self):
         # Remove previous beam
         if hasattr(self, 'beam_id_primary'):
@@ -190,7 +206,7 @@ class CaneEnv(gym.Env):
 
         # Compute the end point of the secondary LiDAR beam
         step_size = 0.3
-        num_steps = 3
+        num_steps = 6
         beam_end_secondary = [
             secondary_lidar_pos[0] + num_steps * step_size * secondary_beam_direction[0],
             secondary_lidar_pos[1] + num_steps * step_size * secondary_beam_direction[1],
@@ -203,8 +219,8 @@ class CaneEnv(gym.Env):
         # Perform ray casting for object detection
         result_primary = p.rayTest(lidar_pos, beam_end)
         result_secondary = p.rayTest(secondary_lidar_pos, beam_end_secondary)
-        #print("prim ",result_primary)
-        #print("sec ",result_secondary)
+        print("prim ",result_primary)
+        print("sec ",result_secondary)
 
         
 
@@ -235,14 +251,11 @@ class CaneEnv(gym.Env):
         swing_return = np.linspace(-80, 0, num=10)
         full_cycle = np.concatenate((swing_up, swing_down, swing_return))
 
-        #################
-
         pos, current_orientation = p.getBasePositionAndOrientation(self.cane_id)
-    
+        
         # Convert current quaternion to Euler angles
         current_euler = p.getEulerFromQuaternion(current_orientation)
         current_yaw = current_euler[2]  # Extract the current yaw angle
-
 
         for angle in full_cycle:
             self.current_swing_deg = angle
@@ -255,14 +268,22 @@ class CaneEnv(gym.Env):
             # Get LiDAR data during the swing
             obstacle_prim, obstacle_sec = self.get_lidar_data()
             
+            # Check for collisions
+            contacts = p.getContactPoints(bodyA=self.cane_id)
+            for contact in contacts:
+                # Only report if it's meaningful
+                if contact[8] < 0.01:  # Close contact distance
+                    print("Cane hits obstacle")
+                p.changeVisualShape(self.cane_id, -1, rgbaColor=[1, 0, 0, 1])  # Red color
+            p.changeVisualShape(self.cane_id, -1, rgbaColor=[0, 1, 0, 1])  # Green color   
+
             p.stepSimulation()
             time.sleep(self.dt)
 
         # Maintain the cane's final orientation after the swing cycle
         _, final_orientation = p.getBasePositionAndOrientation(self.cane_id)
         p.resetBasePositionAndOrientation(self.cane_id, pos, final_orientation)
-        #################
-
+    
     def step(self, action):
 
         # First, run a full swing cycle (160° total swing) before moving.
@@ -284,10 +305,10 @@ class CaneEnv(gym.Env):
             9: math.radians(180)  # 180 deg turn around
         }
 
+        collision_detected = False  # Initialize collision_detected variable
 
         if action == 0:  # Take 1 step forward
             print("\n\nforward\n\n")
-            #print(new_pos)
             _, orientation = p.getBasePositionAndOrientation(self.cane_id)
             roll, pitch, yaw = p.getEulerFromQuaternion(orientation)
             
@@ -295,7 +316,25 @@ class CaneEnv(gym.Env):
             step_size = 0.3
             new_pos = pos + np.array([-step_size * math.sin(yaw), step_size * math.cos(yaw), 0])
             print(new_pos)
-            _, new_orientation = p.getBasePositionAndOrientation(self.cane_id)
+            
+            # Check for collisions at the new position
+            temp_orientation = p.getQuaternionFromEuler([roll, pitch, yaw])
+            p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), temp_orientation)
+            contacts = p.getContactPoints(bodyA=self.cane_id)
+            for contact in contacts:
+                # Only report if it's meaningful
+                if contact[8] < 0.01:  # Close contact distance
+                    collision_detected = True
+                    break
+            
+            # If a collision is detected, don't move the cane
+            if collision_detected:
+                #p.changeVisualShape(self.cane_id, -1, rgbaColor=[1, 0, 0, 1])  # Red color
+                p.resetBasePositionAndOrientation(self.cane_id, pos, orientation)
+                print("Collision detected, cannot move through obstacle")
+            else:
+                #p.changeVisualShape(self.cane_id, -1, rgbaColor=[0, 1, 0, 1])  # Green color
+                _, new_orientation = p.getBasePositionAndOrientation(self.cane_id)
 
         elif action == 1:  # Stop
             print("\n\nno move\n\n")
@@ -313,13 +352,12 @@ class CaneEnv(gym.Env):
             raise ValueError("Invalid action")
 
         # Update the cane's position and orientation.
-        p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), new_orientation)
+        if not collision_detected or action != 0:
+            p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), new_orientation)
 
         # For observation, we return the cane's new center position.
-        ############################################
         distance_to_goal = np.linalg.norm(new_pos - self.goal_location)
         print(distance_to_goal)
-
 
         # Check if the cane has reached the goal location
         if distance_to_goal < 0.8 :  # Adjust the threshold value as needed
@@ -335,24 +373,11 @@ class CaneEnv(gym.Env):
             # Return done=True to indicate that the episode has ended
             return new_pos, 0, True, {}
 
-        ################################################
-        #distance_to_goal = np.linalg.norm(new_pos - self.goal_location)
         reward = -distance_to_goal
-
-        #reward = new_pos[1]  # For example, reward based on forward progress.
         done = False
 
-        ############################# Trying to get collision points ##########################
-        contacts = p.getContactPoints(bodyA=self.cane_id)
-
-        for contact in contacts:
-            # Only report if it's meaningful
-            if contact[8] < 0.01:  # Close contact distance
-                print(f"Tip hit obstacle at {contact[5]} with normal {contact[7]}")
-
-
-
         return new_pos, reward, done, {}
+    
 
     def reset(self):
         self.current_swing_deg = 0
