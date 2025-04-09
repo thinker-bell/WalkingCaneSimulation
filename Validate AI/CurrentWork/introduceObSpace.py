@@ -101,13 +101,6 @@ class CaneEnv(gym.Env):
         # 4: Stop (no movement)
         self.action_space = spaces.Discrete(5)
         
-        # Observation space: we'll return the cane’s center position.
-        self.observation_space = spaces.Box(
-            low=np.array([-10, -10, 0]),
-            high=np.array([10, 10, 10]),
-            dtype=np.float32
-        )
-        
         # Simulation time step for the swing cycle.
         self.dt = 1.0 / 240.0
 
@@ -162,17 +155,14 @@ class CaneEnv(gym.Env):
 
         obs_list = []
 
-        for angle in swing_angles:
-            self.current_swing_deg = angle
-            new_orientation = p.getQuaternionFromEuler(
-                [self.baseline_roll, self.baseline_pitch, current_yaw + math.radians(self.current_swing_deg)]
-            )
-            
-            # Set orientation
-            p.resetBasePositionAndOrientation(self.cane_id, pos, new_orientation)
+        prim_lidar, sec_lidar = self.get_lidar_data()
 
-            # You don’t need to step the simulation if this is just for observation
-            primary_lidar, secondary_lidar = self.get_lidar_data()
+        for i, angle in enumerate(swing_angles):
+            # Normalize angle between [-1, 1] instead of storing raw deg
+            norm_angle = angle / 90.0  
+
+            primary_lidar = prim_lidar
+            secondary_lidar = sec_lidar
 
             if primary_lidar is None:
                 primary_lidar = 3.6  # Or whatever your lidar range is
@@ -182,13 +172,13 @@ class CaneEnv(gym.Env):
             # Distance to goal
             distance_to_goal = np.linalg.norm(np.array(self.goal_location) - np.array(pos))
 
-            # Normalize angle between [-1, 1] instead of storing raw deg
-            norm_angle = angle / 90.0  
-
             obs_list.append([norm_angle, primary_lidar, secondary_lidar, distance_to_goal])
 
         # Convert to 1D flattened array for compatibility
-        return np.array(obs_list, dtype=np.float32).flatten()
+        obs_array = np.concatenate([np.array(obs) for obs in obs_list])
+        print("obs",obs_array)
+
+        return obs_array
 
 
     def get_lidar_data(self):
@@ -265,8 +255,8 @@ class CaneEnv(gym.Env):
         # Perform ray casting for object detection
         result_primary = p.rayTest(lidar_pos, beam_end)
         result_secondary = p.rayTest(secondary_lidar_pos, beam_end_secondary)
-        print("prim ",result_primary)
-        print("sec ",result_secondary)
+        #print("prim ",result_primary)
+        #print("sec ",result_secondary)
 
         
 
@@ -284,7 +274,7 @@ class CaneEnv(gym.Env):
             closest_obstacle_secondary = result_secondary[2] if len(result_secondary) > 2 else num_steps * step_size
         
         
-        return closest_obstacle_primary, closest_obstacle_secondary
+        return result_primary, result_secondary
 
     def swing_cycle(self):
         """
@@ -313,7 +303,10 @@ class CaneEnv(gym.Env):
             
             # Get LiDAR data during the swing
             obstacle_prim, obstacle_sec = self.get_lidar_data()
-            
+
+            #print(obstacle_prim)
+            #print(obstacle_sec)
+
             # Check for collisions
             contacts = p.getContactPoints(bodyA=self.cane_id)
             for contact in contacts:
@@ -361,7 +354,7 @@ class CaneEnv(gym.Env):
             # Calculate new position based on current orientation
             step_size = 0.3
             new_pos = pos + np.array([-step_size * math.sin(yaw), step_size * math.cos(yaw), 0])
-            print(new_pos)
+            #print(new_pos)
             
             # Check for collisions at the new position
             temp_orientation = p.getQuaternionFromEuler([roll, pitch, yaw])
@@ -390,7 +383,7 @@ class CaneEnv(gym.Env):
             print("\n\nrotate")
             print(action,"\n\n")
             new_pos = pos
-            print(new_pos)
+            #print(new_pos)
             new_orientation = p.getQuaternionFromEuler(
                 [self.baseline_roll, self.baseline_pitch, rotation_angles[action]]
             )
@@ -403,7 +396,7 @@ class CaneEnv(gym.Env):
 
         # For observation, we return the cane's new center position.
         distance_to_goal = np.linalg.norm(new_pos - self.goal_location)
-        print(distance_to_goal)
+        #print(distance_to_goal)
 
         # Check if the cane has reached the goal location
         if distance_to_goal < 0.8 :  # Adjust the threshold value as needed
@@ -423,7 +416,7 @@ class CaneEnv(gym.Env):
         done = False
 
         obs = self.get_observation()
-        print("Obs: ",obs)
+        #print("Obs: ",obs)
         ############### Current OBS values ################
         # cane yaw angle
         # primary lidar distance
