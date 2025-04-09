@@ -4,6 +4,9 @@ Problem: the cane swings from a middle axis, for
 Current working implementation of cane swining
 '''
 
+#### TEST ####
+
+
 import gymnasium as gym
 import numpy as np
 import pybullet as p
