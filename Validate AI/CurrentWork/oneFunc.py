@@ -107,22 +107,20 @@ class CaneEnv(gym.Env):
         # Simulation time step for the swing cycle.
         self.dt = 1.0 / 240.0
 
-         ####### WORKING OBSERVATION SPACE ##########
-        # Define the new observation space
-        # [yaw angle, lidar 1, lidar 2, distance to goal] for each angle in the swing cycle
-        num_angles = len(np.arange(-80, 81, 10))
-        low_obs = np.array([-1.0, 0.0, 0.0, 0.0] * num_angles, dtype=np.float32)
-        high_obs = np.array([1.0, 10.0, 10.0, 20.0] * num_angles, dtype=np.float32)
-
-        self.observation_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
-        '''
+        
         ########### NON FUNCTIONING ##########
         # 19 lidar angles * 2 beams = 38 + 6 (cane_x, cane_y, cane_z, cane_yaw, yaw, distance_to_goal) = 44
+        #low_obs = np.array([0.0] * 38 + [-np.inf, -np.inf, -np.inf, -np.pi, -np.pi, 0.0], dtype=np.float32)
+        #high_obs = np.array([10.0] * 38 + [np.inf, np.inf, np.inf, np.pi, np.pi, 20.0], dtype=np.float32)
+
+        #self.observation_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
+       
+        # Ensure the 'low' and 'high' observations have a consistent length and data type.
         low_obs = np.array([0.0] * 38 + [-np.inf, -np.inf, -np.inf, -np.pi, -np.pi, 0.0], dtype=np.float32)
         high_obs = np.array([10.0] * 38 + [np.inf, np.inf, np.inf, np.pi, np.pi, 20.0], dtype=np.float32)
 
+        # Create the observation space using Box
         self.observation_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
-        '''
 
 
 
@@ -157,87 +155,111 @@ class CaneEnv(gym.Env):
             ),
             basePosition=self.obstacle_location
         )
-
-
-        ############## NON FUNCTIONING OBS SPACE #########
-        def get_observation(self):
-            pos, cane_orientation = p.getBasePositionAndOrientation(self.cane_id)
-            cane_roll, cane_pitch, cane_yaw = p.getEulerFromQuaternion(cane_orientation)
-
-            # Define sweep angles: 0° to 180° in 10° steps
-            sweep_angles = np.arange(-81, 81, 10)
-            obs_list = []
-            print(sweep_angles)
-            # Gather LiDAR data for each sweep angle
-            for angle in sweep_angles:
-                print(angle)
-                lidar1, lidar2 = self.get_lidar_data()
-                print("prim:",lidar1)
-                print("sec",lidar2)
-
-                # Default max distance if nothing detected
-                if lidar1 is None:
-                    lidar1 = 3.6
-                if lidar2 is None:
-                    lidar2 = 3.6
-
-                obs_list.extend([lidar1, lidar2])
-                #print(obs_list)
-
-            # Add additional environment info
-            cane_x, cane_y, cane_z = pos  # Extract the z-coordinate
-            distance_to_goal = np.linalg.norm(np.array(self.goal_location) - np.array([cane_x, cane_y, cane_z]))  # 3D distance
-
-            obs_list.extend([
-                cane_yaw,  # Using cane_yaw directly as the heading
-                cane_x, cane_y, cane_z,  # Including z-coordinate of the cane
-                cane_yaw,  # yaw as a duplicate or you can choose another metric
-                distance_to_goal
-            ])
-
-            print(np.array(obs_list, dtype=np.float32))
-
-            return np.array(obs_list, dtype=np.float32)
-
-
-
-       '''
-    ############ WORKING OBS SPACE ############
-    def get_observation(self):
+        '''
+    def get_observation_with_swing(self):
+        # Initial position and orientation of the cane
         pos, cane_orientation = p.getBasePositionAndOrientation(self.cane_id)
         cane_roll, cane_pitch, cane_yaw = p.getEulerFromQuaternion(cane_orientation)
 
-        # The swing angles to use (every 10 degrees)
-        swing_angles = np.arange(-80, 81, 10)
+        # Define the swing angles for the full cycle
+        swing_up = np.linspace(0, 80, num=10)
+        swing_down = np.linspace(80, -80, num=20)
+        swing_return = np.linspace(-80, 0, num=10)
+        full_cycle = np.concatenate((swing_up, swing_down, swing_return))
 
+        # Goal location (assumed to be provided somewhere in the class)
+        goal_location = self.goal_location
+
+        # Observation list to accumulate the data
         obs_list = []
 
-        prim_lidar, sec_lidar = self.get_lidar_data()
+        # Loop through the swing cycle and gather data at each angle
+        for angle in full_cycle:
+            #print(angle)
+            self.current_swing_deg = angle
 
-        for i, angle in enumerate(swing_angles):
-            # Normalize angle between [-1, 1] instead of storing raw deg
-            norm_angle = angle / 90.0  
+            # Set new orientation based on the swing angle
+            new_orientation = p.getQuaternionFromEuler(
+                [self.baseline_roll, self.baseline_pitch, cane_yaw + math.radians(self.current_swing_deg)]
+            )
+            
+            # Update cane's position and orientation
+            p.resetBasePositionAndOrientation(self.cane_id, pos, new_orientation)
 
-            primary_lidar = prim_lidar
-            secondary_lidar = sec_lidar
+            # Get LiDAR data during the swing
+            primary_lidar, secondary_lidar = self.get_lidar_data()
 
+            # Handle None lidar readings (e.g., if no obstacle detected)
             if primary_lidar is None:
-                primary_lidar = 3.6  # Or whatever your lidar range is
+                primary_lidar = 3.6  # or whatever the maximum lidar range is
             if secondary_lidar is None:
                 secondary_lidar = 3.6
+            
+            # idk if I should add the norm angle
+            #obs_list.append(primary_lidar)
+            #obs_list.append(secondary_lidar)
+            obs_list.append([primary_lidar,secondary_lidar])
 
-            # Distance to goal
-            distance_to_goal = np.linalg.norm(np.array(self.goal_location) - np.array(pos))
 
-            obs_list.append([norm_angle, primary_lidar, secondary_lidar, distance_to_goal])
+        '''
+        cane_x, cane_y, cane_z = pos  # Extract the z-coordinate
+        distance_to_goal = np.linalg.norm(np.array(self.goal_location) - np.array([cane_x, cane_y, cane_z]))  # 3D distance
 
-        # Convert to 1D flattened array for compatibility
+        obs_list.extend([
+            cane_yaw,  # Using cane_yaw directly as the heading
+            cane_x, cane_y, cane_z,  # Including z-coordinate of the cane
+            cane_yaw,  # yaw as a duplicate or you can choose another metric
+            distance_to_goal
+        ])
+
+        #print(np.array(obs_list, dtype=np.float32))
+        '''
+
+
+        # Distance to goal
+        #distance_to_goal = np.linalg.norm(np.array(goal_location) - np.array(pos))
+        # Append the observation for this cycle step
+        #obs_list.append([distance_to_goal])
+
+        # Check for collisions during the swing
+        contacts = p.getContactPoints(bodyA=self.cane_id)
+        for contact in contacts:
+            # Only report if it's meaningful
+            if contact[8] < 0.01:  # Close contact distance
+                print("Cane hits obstacle")
+            p.changeVisualShape(self.cane_id, -1, rgbaColor=[1, 0, 0, 1])  # Red color
+        p.changeVisualShape(self.cane_id, -1, rgbaColor=[0, 1, 0, 1])  # Green color   
+
+        # Step the simulation forward
+        p.stepSimulation()
+        time.sleep(self.dt)  # Assuming self.dt is the time step for the simulation
+
+        # Extract the cane's position (x, y, z)
+        cane_x, cane_y, cane_z = pos  
+
+        # Calculate distance to goal (3D distance)
+        distance_to_goal = np.linalg.norm(np.array(self.goal_location) - np.array([cane_x, cane_y, cane_z]))
+
+        # Add the cane's position, orientation (yaw), and distance to goal to the observation list
+        obs_list.append([cane_yaw, cane_x, cane_y, cane_z, distance_to_goal])
+
+        #print(obs_list)
+
         obs_array = np.concatenate([np.array(obs) for obs in obs_list])
-        print("obs",obs_array)
+
+
+        # Flatten the collected observations into a single 1D array
+        #obs_array = np.array(obs_list).flatten()
+
+        #obs_array = np.array(obs_list, dtype=np.float64)
+
+        print(obs_array)
 
         return obs_array
 
    
+
+
     def get_lidar_data(self):
         # Remove previous beam
         if hasattr(self, 'beam_id_primary'):
@@ -336,64 +358,12 @@ class CaneEnv(gym.Env):
         return lidar1_value, lidar2_value
 
 
-    def swing_cycle(self):
-        """
-        We'll swing from 0° to +80°, then from +80° to –80°, and finally back to 0°.
-        """
-        # Create a sequence of swing angles.
-        # For example, 10 steps from 0 to 80, 20 steps from 80 to -80, and 10 steps from -80 to 0.
-        swing_up = np.linspace(0, 80, num=10)
-        swing_down = np.linspace(80, -80, num=20)
-        swing_return = np.linspace(-80, 0, num=10)
-        full_cycle = np.concatenate((swing_up, swing_down, swing_return))
-
-        pos, current_orientation = p.getBasePositionAndOrientation(self.cane_id)
-        
-        # Convert current quaternion to Euler angles
-        current_euler = p.getEulerFromQuaternion(current_orientation)
-        current_yaw = current_euler[2]  # Extract the current yaw angle
-
-        # trying to make list for incremental lidar readings. 
-        obsList = []
-
-        for angle in full_cycle:
-            
-            self.current_swing_deg = angle
-            new_orientation = p.getQuaternionFromEuler(
-                [self.baseline_roll, self.baseline_pitch, current_yaw + math.radians(self.current_swing_deg)]
-            )
-            
-            p.resetBasePositionAndOrientation(self.cane_id, pos, new_orientation)
-            
-            # Get LiDAR data during the swing
-            obstacle_prim, obstacle_sec = self.get_lidar_data()
-            obsList.extend([obstacle_prim,obstacle_sec])
-
-            #print(obstacle_prim)
-            #print(obstacle_sec)
-
-            # Check for collisions
-            contacts = p.getContactPoints(bodyA=self.cane_id)
-            for contact in contacts:
-                # Only report if it's meaningful
-                if contact[8] < 0.01:  # Close contact distance
-                    print("Cane hits obstacle")
-                p.changeVisualShape(self.cane_id, -1, rgbaColor=[1, 0, 0, 1])  # Red color
-            p.changeVisualShape(self.cane_id, -1, rgbaColor=[0, 1, 0, 1])  # Green color   
-
-            p.stepSimulation()
-            time.sleep(self.dt)
-
-        print(obsList)
-
-        # Maintain the cane's final orientation after the swing cycle
-        _, final_orientation = p.getBasePositionAndOrientation(self.cane_id)
-        p.resetBasePositionAndOrientation(self.cane_id, pos, final_orientation)
     
     def step(self, action):
 
         # First, run a full swing cycle (160° total swing) before moving.
-        self.swing_cycle()
+        #self.swing_cycle()
+        observation = self.get_observation_with_swing()
 
         # Now, update the cane's position based on the original movement action.
         pos, _ = p.getBasePositionAndOrientation(self.cane_id)
@@ -466,23 +436,40 @@ class CaneEnv(gym.Env):
         #print(distance_to_goal)
 
         # Check if the cane has reached the goal location
+        goal_location = False
         if distance_to_goal < 0.8 :  # Adjust the threshold value as needed
             # Stop the cane
             p.resetBaseVelocity(self.cane_id, [0, 0, 0], [0, 0, 0])
 
             # Display a notification
             print("Location Reached! Stopping the cane.")
-
+            goal_location = True
             # You can also add a notification using tkinter or other GUI libraries
             # if you want a pop-up window.
 
             # Return done=True to indicate that the episode has ended
-            return new_pos, 0, True, {}
+            print(100)
+            return new_pos, 100, True, {}
 
-        reward = -distance_to_goal
+        ################  CREATE REWARD VALUES #################
+
+        # variables I need to consider: 
+        # goal_location = False: boolean
+        # distance_to_goal: float
+        # previous distance to goal: float
+        # collision_detected: boolean
+
+        reward = self.compute_reward(goal_location, distance_to_goal, self.prev_distance_to_goal, collision_detected)
+        self.prev_distance_to_goal = distance_to_goal
+
+        print(reward)
+
+        #reward = -distance_to_goal
         done = False
 
-        obs = self.get_observation()
+
+
+        #obs = self.get_observation()
         #print("Obs: ",obs)
         ############### Current OBS values ################
         # cane yaw angle
@@ -492,6 +479,20 @@ class CaneEnv(gym.Env):
 
         return new_pos, reward, done, {}
     
+    def compute_reward(self,goal_location, distance_to_goal, prev_distance_to_goal, collision_detected):
+        reward = 0.0
+
+        if goal_location:
+            reward += 100.0
+        else:
+            reward -= 0.1  # Step penalty
+            reward += (prev_distance_to_goal - distance_to_goal) * 10
+
+        if collision_detected:
+            reward -= 50.0
+
+        return reward
+
 
     def reset(self):
         self.current_swing_deg = 0
@@ -499,6 +500,8 @@ class CaneEnv(gym.Env):
             [self.baseline_roll, self.baseline_pitch, math.radians(0)]
         )
         p.resetBasePositionAndOrientation(self.cane_id, self.cane_start_pos, initial_orientation)
+        pos, _ = p.getBasePositionAndOrientation(self.cane_id)
+        self.prev_distance_to_goal = np.linalg.norm(np.array(pos) - np.array(self.goal_location))
         return np.array(self.cane_start_pos, dtype=np.float32)
     
     def render(self, mode="human"):
