@@ -15,12 +15,13 @@ import time
 import math
 import os
 from gymnasium import spaces
-
+from stable_baselines3 import PPO
 
 
 
 
 class CaneEnv(gym.Env):
+    MAX_TIMESTEPS = 100  # Set a max limit for each episode
     def __init__(self):
         super(CaneEnv, self).__init__()
         
@@ -108,7 +109,6 @@ class CaneEnv(gym.Env):
         
         # Simulation time step for the swing cycle.
         self.dt = 1.0 / 240.0
-
         
         ########### NON FUNCTIONING ##########
         # 19 lidar angles * 2 beams = 38 + 6 (cane_x, cane_y, cane_z, cane_yaw, yaw, distance_to_goal) = 44
@@ -118,8 +118,8 @@ class CaneEnv(gym.Env):
         #self.observation_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
        
         # Ensure the 'low' and 'high' observations have a consistent length and data type.
-        low_obs = np.array([0.0] * 38 + [-np.inf, -np.inf, -np.inf, -np.pi, -np.pi, 0.0], dtype=np.float32)
-        high_obs = np.array([10.0] * 38 + [np.inf, np.inf, np.inf, np.pi, np.pi, 20.0], dtype=np.float32)
+        low_obs = np.array([0.0] * 79 + [-np.inf, -np.inf, -np.inf, -np.pi, -np.pi, 0.0], dtype=np.float32)
+        high_obs = np.array([10.0] * 79 + [np.inf, np.inf, np.inf, np.pi, np.pi, 20.0], dtype=np.float32)
 
         # Create the observation space using Box
         self.observation_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
@@ -451,7 +451,7 @@ class CaneEnv(gym.Env):
 
             # Return done=True to indicate that the episode has ended
             print(100)
-            return new_pos, 100, True, {}
+            return observation, 100, True, False, {}
 
         ################  CREATE REWARD VALUES #################
 
@@ -467,7 +467,7 @@ class CaneEnv(gym.Env):
         print(reward)
 
         #reward = -distance_to_goal
-        done = False
+        #done = False
 
 
 
@@ -478,8 +478,12 @@ class CaneEnv(gym.Env):
         # primary lidar distance
         # secondary lidar distance
         # distance to goal 
+        print(observation)
 
-        return new_pos, reward, done, {}
+        self.current_timestep += 1  # Increment timestep
+        done = self.current_timestep >= CaneEnv.MAX_TIMESTEPS
+
+        return observation, reward, done,False, {}
     
     def compute_reward(self,goal_location, distance_to_goal, prev_distance_to_goal, collision_detected):
         reward = 0.0
@@ -487,7 +491,7 @@ class CaneEnv(gym.Env):
         if goal_location:
             reward += 100.0
         else:
-            reward -= 0.1  # Step penalty
+            reward -= 0.9  # Step penalty
             reward += (prev_distance_to_goal - distance_to_goal) * 10
 
         if collision_detected:
@@ -496,7 +500,8 @@ class CaneEnv(gym.Env):
         return reward
 
 
-    def reset(self):
+    def reset(self, **kwargs):
+        self.current_timestep = 0 
         self.current_swing_deg = 0
         initial_orientation = p.getQuaternionFromEuler(
             [self.baseline_roll, self.baseline_pitch, math.radians(0)]
@@ -504,7 +509,11 @@ class CaneEnv(gym.Env):
         p.resetBasePositionAndOrientation(self.cane_id, self.cane_start_pos, initial_orientation)
         pos, _ = p.getBasePositionAndOrientation(self.cane_id)
         self.prev_distance_to_goal = np.linalg.norm(np.array(pos) - np.array(self.goal_location))
-        return np.array(self.cane_start_pos, dtype=np.float32)
+        
+        obs = np.zeros(85, dtype=np.float32)  # Replace with real values later
+        return obs, {}
+
+
     
     def render(self, mode="human"):
         pass
@@ -514,16 +523,32 @@ class CaneEnv(gym.Env):
 
 
 if __name__ == "__main__":
-    env = CaneEnv()
-    env.reset()
+    env=CaneEnv()
+
+    model = PPO("MlpPolicy",env,verbose=1)
+
+    model.learn(total_timesteps=10)
+
+    model.save("ppo_cane_model")
     
     try:
         while True:
             # Testing if my github works
             # For testing, use the original action space (movement only).
             # For instance, randomly choose an action.
-            action = env.action_space.sample()
-            env.step(action)
+            #action = env.action_space.sample()
+            #env.step(action)
+            
+
+            obs, _ = env.reset()
+            done = False
+            while not done:
+                action, _states = model.predict(obs)
+                obs, reward, done, _, _ = env.step(action)
+                time.sleep(1.0 / 30.0)  # Slow down for visualization
+
+
+
             '''contact_points = p.getContactPoints(bodyA=env.cane_id, bodyB=env.obstacle_id)
             for contact in contact_points:
                 pos = contact[5]  # Contact position in world coordinates
