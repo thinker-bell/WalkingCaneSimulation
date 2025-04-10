@@ -15,7 +15,8 @@ import time
 import math
 import os
 from gymnasium import spaces
-from stable_baselines3 import PPO
+from stable_baselines3 import DQN
+#from stable_baselines3.common.monitor import Monitor
 
 
 
@@ -384,6 +385,11 @@ class CaneEnv(gym.Env):
         }
 
         collision_detected = False  # Initialize collision_detected variable
+        
+        print(action)
+        
+        #action, _ = model.predict(observation, deterministic=True)
+        action = int(action)  
 
         if action == 0:  # Take 1 step forward
             print("\n\nforward\n\n")
@@ -414,6 +420,7 @@ class CaneEnv(gym.Env):
                 #p.changeVisualShape(self.cane_id, -1, rgbaColor=[0, 1, 0, 1])  # Green color
                 _, new_orientation = p.getBasePositionAndOrientation(self.cane_id)
 
+
         elif action == 1:  # Stop
             print("\n\nno move\n\n")
             new_pos = pos
@@ -439,7 +446,7 @@ class CaneEnv(gym.Env):
 
         # Check if the cane has reached the goal location
         goal_location = False
-        if distance_to_goal < 0.8 :  # Adjust the threshold value as needed
+        if distance_to_goal < 0.5 :  # Adjust the threshold value as needed
             # Stop the cane
             p.resetBaseVelocity(self.cane_id, [0, 0, 0], [0, 0, 0])
 
@@ -524,13 +531,16 @@ class CaneEnv(gym.Env):
 
 if __name__ == "__main__":
     env=CaneEnv()
+    #env = Monitor(env)
 
-    model = PPO("MlpPolicy",env,verbose=1)
+    model = DQN("MlpPolicy",env,verbose=1)
+    #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
 
-    model.learn(total_timesteps=10)
+    model.learn(total_timesteps=100)
 
-    model.save("ppo_cane_model")
+    model.save("dqn_cane_model")
     
+
     try:
         while True:
             # Testing if my github works
