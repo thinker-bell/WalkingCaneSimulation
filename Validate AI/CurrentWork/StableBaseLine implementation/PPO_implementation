@@ -15,7 +15,7 @@ import time
 import math
 import os
 from gymnasium import spaces
-from stable_baselines3 import DQN
+from stable_baselines3 import PPO
 #from stable_baselines3.common.monitor import Monitor
 
 
@@ -471,6 +471,7 @@ class CaneEnv(gym.Env):
 
             # Display a notification
             print("Location Reached! Stopping the cane.")
+            exit()
             goal_location = True
             # You can also add a notification using tkinter or other GUI libraries
             # if you want a pop-up window.
@@ -555,12 +556,12 @@ if __name__ == "__main__":
     env=CaneEnv()
     #env = Monitor(env)
 
-    model = DQN("MlpPolicy",env,verbose=1)
+    model = PPO("MlpPolicy",env,verbose=1)
     #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
 
     model.learn(total_timesteps=1000)
 
-    model.save("dqn_cane_model")
+    model.save("ppo_cane_model")
     
 
     try:

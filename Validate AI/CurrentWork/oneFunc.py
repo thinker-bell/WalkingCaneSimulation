@@ -83,7 +83,7 @@ class CaneEnv(gym.Env):
         self.lidar_start_pos = [0, 0, self.cane_height / 8]
 
         ############################ GOAL LOCATION ################################
-        self.goal_location = np.array([-2.0, 2.0, 1.4])
+        self.goal_location = np.array([2.0, 2.0, 1.4])
         self.goal_visual_id = p.createMultiBody(
             baseMass=0,
             baseCollisionShapeIndex=p.createCollisionShape(
@@ -143,7 +143,7 @@ class CaneEnv(gym.Env):
         )
         
         # ----------------- OBSTACLE 2 -----------------
-        self.obstacle_location = np.array([1.5, 2.0, 0.5])  # Adjust height to be half the box height
+        self.obstacle_location = np.array([1.5, -2.0, 0.5])  # Adjust height to be half the box height
         self.obstacle_id = p.createMultiBody(
             baseMass=0,
             baseCollisionShapeIndex=p.createCollisionShape(
@@ -368,8 +368,9 @@ class CaneEnv(gym.Env):
         observation = self.get_observation_with_swing()
 
         # Now, update the cane's position based on the original movement action.
-        pos, _ = p.getBasePositionAndOrientation(self.cane_id)
+        pos, orientation = p.getBasePositionAndOrientation(self.cane_id)
         pos = np.array(pos)
+        roll, pitch, yaw = p.getEulerFromQuaternion(orientation)
         step_size = 0.3
 
         # Define the rotation angles
@@ -387,13 +388,9 @@ class CaneEnv(gym.Env):
 
         if action == 0:  # Take 1 step forward
             print("\n\nforward\n\n")
-            _, orientation = p.getBasePositionAndOrientation(self.cane_id)
-            roll, pitch, yaw = p.getEulerFromQuaternion(orientation)
             
             # Calculate new position based on current orientation
-            step_size = 0.3
             new_pos = pos + np.array([-step_size * math.sin(yaw), step_size * math.cos(yaw), 0])
-            #print(new_pos)
             
             # Check for collisions at the new position
             temp_orientation = p.getQuaternionFromEuler([roll, pitch, yaw])
@@ -407,25 +404,24 @@ class CaneEnv(gym.Env):
             
             # If a collision is detected, don't move the cane
             if collision_detected:
-                #p.changeVisualShape(self.cane_id, -1, rgbaColor=[1, 0, 0, 1])  # Red color
                 p.resetBasePositionAndOrientation(self.cane_id, pos, orientation)
                 print("Collision detected, cannot move through obstacle")
+                new_pos = pos  # Set new_pos to current pos
+                new_orientation = orientation
             else:
-                #p.changeVisualShape(self.cane_id, -1, rgbaColor=[0, 1, 0, 1])  # Green color
                 _, new_orientation = p.getBasePositionAndOrientation(self.cane_id)
 
         elif action == 1:  # Stop
             print("\n\nno move\n\n")
             new_pos = pos
-            _, new_orientation = p.getBasePositionAndOrientation(self.cane_id)
-        elif action in rotation_angles:  # Rotate
-            print("\n\nrotate")
-            print(action,"\n\n")
+            new_orientation = orientation
+
+        elif action in [2, 3, 4, 6, 7, 8, 9]:  
             new_pos = pos
-            #print(new_pos)
             new_orientation = p.getQuaternionFromEuler(
-                [self.baseline_roll, self.baseline_pitch, rotation_angles[action]]
+                [self.baseline_roll, self.baseline_pitch, yaw + rotation_angles[action]]
             )
+
         else:
             raise ValueError("Invalid action")
 
