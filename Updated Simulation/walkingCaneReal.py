@@ -1,0 +1,579 @@
+''' 
+This implementation considers swinging before stepping
+Problem: the cane swings from a middle axis, for 
+Current working implementation of cane swining
+'''
+
+import gymnasium as gym
+import numpy as np
+import pybullet as p
+import pybullet_data
+import time
+import math
+import os
+from gymnasium import spaces
+from collections import deque
+from stable_baselines3 import DQN
+#from stable_baselines3 import PPO
+#from stable_baselines3.common.monitor import Monitor
+
+
+
+
+class CaneEnv(gym.Env):
+    MAX_TIMESTEPS = 1000  # Set a max limit for each episode
+    def __init__(self):
+        super(CaneEnv, self).__init__()
+        
+        # Connect to PyBullet in GUI mode and set up simulation.
+        self.physics_client = p.connect(p.GUI)
+        p.setAdditionalSearchPath(pybullet_data.getDataPath())
+        p.resetSimulation()
+        p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1)
+        
+        # Load a plane for reference.
+        #self.plane_id = p.loadURDF("custom_plane.urdf")
+        self.plane_id = p.loadURDF("plane.urdf")
+        
+        # Cane properties.
+        self.cane_radius = 0.025     # Radius of the cane (cylinder)
+        self.cane_height = 2.0      # Cane length
+        self.cane_mass = 1.0        # Cane mass
+        
+        # Fixed baseline: 45° tilt about the X-axis and 0° pitch.
+        self.baseline_roll = math.radians(45)
+        self.baseline_pitch = 0
+        
+        # We'll let the cane have an additional yaw (swing) that is updated during the swing cycle.
+        self.current_swing_deg = 0  # in degrees
+        
+        # Compute vertical offset so that the bottom nearly touches the ground.
+        vertical_offset = (self.cane_height / 2) * math.cos(math.radians(45))
+        self.cane_start_pos = [0, 0, vertical_offset + 0.75]
+        
+        # Initial orientation: baseline roll and zero yaw.
+        # Initial orientation: baseline roll, zero pitch, and 90 degrees yaw (pointing forward).
+        initial_orientation = p.getQuaternionFromEuler(
+            [self.baseline_roll, self.baseline_pitch, math.radians(90)]
+        )
+        # Create the cane as a pink cylinder.
+        collision_shape = p.createCollisionShape(p.GEOM_CYLINDER,
+                                             radius=self.cane_radius,
+                                             height=self.cane_height)
+        visual_shape = p.createVisualShape(p.GEOM_CYLINDER,
+                                            radius=self.cane_radius,
+                                            length=self.cane_height,
+                                            rgbaColor=[1, 0.75, 0.8, 1])  # Pink color.
+
+        # Shift the center of mass upward to the top 1/8
+        com_height = self.cane_height - (self.cane_height / 8)
+        inertial_pos = [0, 0, com_height / 2]
+
+        # Adjust the base position to move the cane up
+        base_pos = [0, 0, self.cane_height / 2 + 0.1]  # Add 0.1 to move the cane above the floor
+
+        # Create the cane multi-body with the shifted center of mass
+        self.cane_id = p.createMultiBody(baseMass=self.cane_mass,
+                                            baseCollisionShapeIndex=collision_shape,
+                                            baseVisualShapeIndex=visual_shape,
+                                            basePosition=base_pos,
+                                            baseOrientation=initial_orientation,
+                                            baseInertialFramePosition=inertial_pos) 
+        self.cane_id = 1  # Add this line
+         
+        self.lidar_start_pos = [0, 0, self.cane_height / 8]
+
+        ############################ GOAL LOCATION ################################
+        self.goal_location = np.array([2.0, -2.0, 1.4])
+        self.goal_visual_id = p.createMultiBody(
+            baseMass=0,
+            baseCollisionShapeIndex=p.createCollisionShape(
+                shapeType=p.GEOM_BOX,
+                halfExtents=[0.1, 0.1, 0.1]
+            ),
+            baseVisualShapeIndex=p.createVisualShape(
+                shapeType=p.GEOM_BOX,
+                halfExtents=[0.1, 0.1, 0.1],
+                rgbaColor=[0, 1, 0, 1]  # Green color
+            ),
+            basePosition=self.goal_location
+        )
+
+        # Define the original action space (movement only).
+        # 0: Move forward (+Y)
+        # 1: Move backward (-Y)
+        # 2: Move left (-X)
+        # 3: Move right (+X)
+        # 4: Stop (no movement)
+        self.action_space = spaces.Discrete(5)
+        
+        # Simulation time step for the swing cycle.
+        self.dt = 1.0 / 240.0
+
+        # Scaling down the observation space since it is much smaller now, need to think how to keep this consistent dynamically 
+        #low_obs = np.full(13, -np.inf, dtype=np.float32)
+        #high_obs = np.full(13, np.inf, dtype=np.float32)
+
+        low_obs = np.array([0.0]*20 + [-np.pi, 0.0, -np.pi], dtype=np.float32)
+        high_obs = np.array([10.0]*20 + [np.pi, 20.0, np.pi], dtype=np.float32)
+
+
+
+        self.observation_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
+
+
+
+        # ----------------- OBSTACLE 1 -----------------
+        self.obstacle_location = np.array([-1.0, 1.0, 0.5])  # Adjust height to be half the box height
+        self.obstacle_id = p.createMultiBody(
+            baseMass=0,
+            baseCollisionShapeIndex=p.createCollisionShape(
+                shapeType=p.GEOM_BOX,
+                halfExtents=[0.3, 0.3, 0.5]
+            ),
+            baseVisualShapeIndex=p.createVisualShape(
+                shapeType=p.GEOM_BOX,
+                halfExtents=[0.3, 0.3, 0.5],
+                rgbaColor=[0.7, 0.2, 0.2, 1]  # Reddish color
+            ),
+            basePosition=self.obstacle_location
+        )
+        
+        # ----------------- OBSTACLE 2 -----------------
+        self.obstacle_location = np.array([1.5, 2.0, 0.5])  # Adjust height to be half the box height
+        self.obstacle_id = p.createMultiBody(
+            baseMass=0,
+            baseCollisionShapeIndex=p.createCollisionShape(
+                shapeType=p.GEOM_SPHERE,
+                halfExtents=[0.3, 0.3, 0.5]
+            ),
+            baseVisualShapeIndex=p.createVisualShape(
+                shapeType=p.GEOM_SPHERE,
+                halfExtents=[0.3, 0.3, 0.5],
+                rgbaColor=[0.7, 0.2, 0.2, 3]  # Reddish color
+            ),
+            basePosition=self.obstacle_location
+        )
+    ''' 
+        Revamping to swig based on paramaters: 
+        N = number of past and current readings to consider (keep a list where you push and pop values) 
+        K = timesteps (how many timesteps before we make a decision)
+        T = how many degrees does the cane swing at a time before taking a reading (maybe start with keeping it stagnant at 2, and then later convert to a randomization process. In the range of (0.5 to 3 degrees) 
+
+    '''  
+    
+    def get_observation_with_swing(self, T=-2, K=10, N=10):
+        # Buffer to store the last N observations
+        if not hasattr(self, 'swing_observation_buffer') or self.swing_observation_buffer.maxlen != N:
+            self.swing_observation_buffer = deque(maxlen=N)
+
+        
+        collision = False
+        pos, cane_orientation = p.getBasePositionAndOrientation(self.cane_id)
+        cane_roll, cane_pitch, cane_yaw = p.getEulerFromQuaternion(cane_orientation)
+
+        angle = 0  # Start at 0
+        for step in range(K):
+            angle += T  # Step angle by T degrees
+
+            self.current_swing_deg = angle
+
+            new_orientation = p.getQuaternionFromEuler([
+                self.baseline_roll, 
+                self.baseline_pitch, 
+                cane_yaw + math.radians(self.current_swing_deg)
+            ])
+
+            p.resetBasePositionAndOrientation(self.cane_id, pos, new_orientation)
+
+            primary_lidar, secondary_lidar = self.get_lidar_data()
+            if primary_lidar is None:
+                primary_lidar = 3.6
+            if secondary_lidar is None:
+                secondary_lidar = 3.6
+
+            # Add reading to buffer
+            self.swing_observation_buffer.append([primary_lidar, secondary_lidar])
+
+            # Optional: Visual feedback
+            contacts = p.getContactPoints(bodyA=self.cane_id)
+            for contact in contacts:
+                if contact[8] < 0.01:
+                    #print("Cane hits obstacle")
+                    collision = True
+                p.changeVisualShape(self.cane_id, -1, rgbaColor=[1, 0, 0, 1])
+            p.changeVisualShape(self.cane_id, -1, rgbaColor=[0, 1, 0, 1])
+
+            p.stepSimulation()
+            time.sleep(self.dt)
+
+        # After K steps, compute Cartesian distance to goal
+        cane_x, cane_y, cane_z = pos
+        dx = self.goal_location[0] - cane_x
+        dy = self.goal_location[1] - cane_y
+        dz = self.goal_location[2] - cane_z
+
+        distance_to_goal = math.hypot(dx, dy)
+        
+
+        #angle_to_goal_global = math.atan2(dy, dx)
+        #angle_to_goal = angle_to_goal_global - cane_yaw
+
+        # Example: normalized angle to goal in radians ^^^^^^^^^^^^
+        angle_to_goal = np.arctan2(dz, dx) - cane_yaw
+        angle_to_goal = (angle_to_goal + np.pi) % (2 * np.pi) - np.pi  # normalize to [-π, π]
+        
+        '''
+        print("Angle to goal",angle_to_goal)
+
+        ############### TEST DIRECTION ISSUE #####################
+        print("goal location x", self.goal_location[0])
+        print("cane x", cane_x)
+        print("cane y", cane_y)
+        print("Cane Yaw:", cane_yaw)
+        print("dx:", dx, "dz:", dz)
+        print("atan2(dz, dx):", math.atan2(dz, dx))
+        print("Raw angle to goal:", math.atan2(dz, dx) - cane_yaw)
+        print("Normalized angle:", angle_to_goal)
+
+        #####################################################
+        '''
+        
+
+        # Add position & direction to goal
+        # Updated observation space:
+        position_info = [cane_yaw, distance_to_goal, angle_to_goal]
+        # position_info = [cane_yaw, cane_x, cane_y, cane_z, dx, dy, dz]
+
+        # Flatten last N readings + position info
+        flattened_readings = np.array(self.swing_observation_buffer).flatten()
+        full_obs = np.concatenate((flattened_readings, position_info))
+        
+
+        #print("Final observation shape:", full_obs.shape)
+
+
+        return full_obs, collision, angle_to_goal
+
+    def get_lidar_data(self):
+        # Remove previous debug beams (if they exist)
+        try:
+            if hasattr(self, 'beam_id'):
+                p.removeUserDebugItem(self.beam_id)
+            if hasattr(self, 'beam_id_secondary'):
+                p.removeUserDebugItem(self.beam_id_secondary)
+        except:
+            pass  # In case it's already removed
+
+        # Get cane position and orientation
+        cane_pos, cane_orientation = p.getBasePositionAndOrientation(self.cane_id)
+        cane_roll, cane_pitch, cane_yaw = p.getEulerFromQuaternion(cane_orientation)
+
+        # ========== PRIMARY LIDAR ==========
+        lidar_offset_z = -1.5
+        lidar_offset = [0, 0, lidar_offset_z]
+        rotated_offset = p.rotateVector(cane_orientation, lidar_offset)
+
+        lidar_pos = [
+            cane_pos[0] + rotated_offset[0],
+            cane_pos[1] + rotated_offset[1],
+            cane_pos[2] + rotated_offset[2]
+        ]
+
+        beam_direction = [
+            -math.sin(cane_yaw),
+            math.cos(cane_yaw),
+            -math.sin(math.radians(45))  # Clean 45-degree downward pitch
+        ]
+
+        step_size = 0.3
+        num_steps = 1.2
+        beam_end = [
+            lidar_pos[0] + num_steps * step_size * beam_direction[0],
+            lidar_pos[1] + num_steps * step_size * beam_direction[1],
+            lidar_pos[2] + num_steps * step_size * beam_direction[2]
+        ]
+
+        self.beam_id = p.addUserDebugLine(lidar_pos, beam_end, [1, 0, 0], 2, 0.1)
+
+        # ========== SECONDARY LIDAR ==========
+        lidar_offset_y = -0.7
+        secondary_lidar_offset = [0, 0, lidar_offset_y]
+        rotated_secondary_offset = p.rotateVector(cane_orientation, secondary_lidar_offset)
+
+        secondary_lidar_pos = [
+            cane_pos[0] + rotated_secondary_offset[0],
+            cane_pos[1] + rotated_secondary_offset[1],
+            cane_pos[2] + rotated_secondary_offset[2]
+        ]
+
+        secondary_beam_direction = [
+            -math.sin(cane_yaw),
+            math.cos(cane_yaw),
+            0  # No pitch
+        ]
+
+        num_steps_secondary = 6
+        beam_end_secondary = [
+            secondary_lidar_pos[0] + num_steps_secondary * step_size * secondary_beam_direction[0],
+            secondary_lidar_pos[1] + num_steps_secondary * step_size * secondary_beam_direction[1],
+            secondary_lidar_pos[2] + num_steps_secondary * step_size * secondary_beam_direction[2]
+        ]
+
+        self.beam_id_secondary = p.addUserDebugLine(secondary_lidar_pos, beam_end_secondary, [1, 0, 0], 2, 0.1)
+
+        # ========== RAYCAST ==========
+
+        result_primary = p.rayTest(lidar_pos, beam_end)
+        result_secondary = p.rayTest(secondary_lidar_pos, beam_end_secondary)
+
+        # Primary LiDAR
+        if result_primary[0][0] == -1:
+            lidar1_value = 0.0
+        else:
+            hit_position = result_primary[0][3]
+            lidar1_value = math.dist(lidar_pos, hit_position)
+
+        # Secondary LiDAR
+        if result_secondary[0][0] == -1 or result_secondary[0][0] == self.cane_id:
+            lidar2_value = 0.0
+        else:
+            hit_position = result_secondary[0][3]
+            lidar2_value = math.dist(secondary_lidar_pos, hit_position)
+
+        return lidar1_value, lidar2_value
+
+    
+    def step(self, action):
+
+        # First, run a full swing cycle (160° total swing) before moving.
+        #self.swing_cycle()
+        observation , collision, angle_to_goal = self.get_observation_with_swing()
+
+        # Now, update the cane's position based on the original movement action.
+        pos, orientation = p.getBasePositionAndOrientation(self.cane_id)
+        pos = np.array(pos)
+        roll, pitch, yaw = p.getEulerFromQuaternion(orientation)
+        step_size = 0.3
+
+        # Define the rotation angles
+        '''
+        rotation_angles = {
+            2: math.radians(90),  # short left
+            3: math.radians(60),  # medium left
+            4: math.radians(30),  # hard left
+            5: math.radians(-30),  # short right
+            6: math.radians(-60),  # medium right
+            7: math.radians(-90),  # hard right
+            8: math.radians(180)  # 180 deg turn around
+        } '''
+        rotation_angles = {
+            2: math.radians(30),  # short left
+            3: math.radians(-30),  # short right
+            4: math.radians(60),  # medium left
+            5: math.radians(-60),  # medium right
+            6: math.radians(90),  # hard left
+            7: math.radians(-90),  # hard right
+            8: math.radians(180)  # 180 deg turn around
+        }
+
+
+        collision_detected = False  # Initialize collision_detected variable
+
+        print(action)
+        action = action.item()
+
+        if action == 0:  # Take 1 step forward
+            #print("\n\nforward\n\n")
+            
+            # Calculate new position based on current orientation
+            new_pos = pos + np.array([-step_size * math.sin(yaw), step_size * math.cos(yaw), 0])
+            
+            # Check for collisions at the new position
+            temp_orientation = p.getQuaternionFromEuler([roll, pitch, yaw])
+            p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), temp_orientation)
+            contacts = p.getContactPoints(bodyA=self.cane_id)
+            
+            for contact in contacts:
+                # Only report if it's meaningful
+                if contact[8] < 0.01:  # Close contact distance
+                    collision_detected = True
+                    break
+            
+            # If a collision is detected, don't move the cane
+            if collision_detected:
+                p.resetBasePositionAndOrientation(self.cane_id, pos, orientation)
+                #print("Collision detected, cannot move through obstacle")
+                new_pos = pos  # Set new_pos to current pos
+                new_orientation = orientation
+            else:
+                _, new_orientation = p.getBasePositionAndOrientation(self.cane_id)
+            
+        elif action == 1:  # Stop
+            #print("\n\nno move\n\n")
+            new_pos = pos
+            new_orientation = orientation
+        
+        elif action in rotation_angles:  
+            new_pos = pos
+            new_orientation = p.getQuaternionFromEuler(
+                [self.baseline_roll, self.baseline_pitch, yaw + rotation_angles[action]]
+            )
+
+        else:
+            raise ValueError("Invalid action")
+
+        # Update the cane's position and orientation.
+        if not collision_detected or action != 0:
+            p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), new_orientation)
+
+        # For observation, we return the cane's new center position.
+        distance_to_goal = np.linalg.norm(new_pos - self.goal_location)
+        #print(distance_to_goal)
+
+        # Check if the cane has reached the goal location
+        goal_location = False
+        if distance_to_goal < 0.5 :  # Adjust the threshold value as needed
+            # Stop the cane
+            p.resetBaseVelocity(self.cane_id, [0, 0, 0], [0, 0, 0])
+
+            # Display a notification
+            print("Location Reached! Stopping the cane.")
+            goal_location = True
+            # You can also add a notification using tkinter or other GUI libraries
+            # if you want a pop-up window.
+
+            # Return done=True to indicate that the episode has ended
+            #print(100)
+            return observation, 100, True, False, {}
+
+        ################  CREATE REWARD VALUES #################
+
+        # variables I need to consider: 
+        # goal_location = False: boolean
+        # distance_to_goal: float
+        # previous distance to goal: float
+        # collision_detected: boolean
+
+        reward = self.compute_reward(goal_location, distance_to_goal, self.prev_distance_to_goal, collision, angle_to_goal, self.prev_angle_to_goal,action)
+        self.prev_distance_to_goal = distance_to_goal
+        self.prev_angle_to_goal = angle_to_goal
+
+        #print(reward)
+
+        #reward = -distance_to_goal
+        #done = False
+
+
+
+        #obs = self.get_observation()
+        #print("Obs: ",obs)
+        ############### Current OBS values ################
+        # cane yaw angle
+        # primary lidar distance
+        # secondary lidar distance
+        # distance to goal 
+        #print(observation)
+
+        self.current_timestep += 1  # Increment timestep
+        done = self.current_timestep >= CaneEnv.MAX_TIMESTEPS
+
+        return observation, reward, done,False, {}
+    
+    
+    def compute_reward(self, goal_location, distance_to_goal, prev_distance_to_goal, collision_detected,angle_to_goal,prev_angle_to_goal,action):
+        reward = 0.0
+
+        if goal_location:
+            reward += 100.0
+        else:
+            reward += (prev_distance_to_goal - distance_to_goal) * 10
+            if distance_to_goal > prev_distance_to_goal:
+                reward -= 5  # penalty for moving away from the goal
+
+        if collision_detected:
+            reward -= 5.0
+            #print("----------------- PENALTY ------------------\n"*5)
+
+        reward -= 0.5 #small time penalty
+        
+        if action in [2, 3, 4, 6, 7, 8] and abs(angle_to_goal) >= abs(prev_angle_to_goal):
+            reward -= 1
+
+        '''
+        # Normalize to [-π, π]
+        print("angle to goal: ", angle_to_goal)
+        angle_diff = (angle_to_goal - prev_angle_to_goal + np.pi) % (2 * np.pi) - np.pi
+        reward -= 0.1 * abs(angle_diff)
+        '''
+
+
+        return reward
+
+
+    def reset(self, **kwargs):
+        #print("\n RESET \n")
+        self.current_timestep = 0 
+        self.current_swing_deg = 0
+        initial_orientation = p.getQuaternionFromEuler(
+            [self.baseline_roll, self.baseline_pitch, math.radians(0)]
+        )
+        p.resetBasePositionAndOrientation(self.cane_id, self.cane_start_pos, initial_orientation)
+        pos, _ = p.getBasePositionAndOrientation(self.cane_id)
+        self.prev_distance_to_goal = np.linalg.norm(np.array(pos) - np.array(self.goal_location))
+        self.prev_angle_to_goal = 0
+
+        # Changed to 13 to meet the new array requirements. 
+        # now includes polar coordinates
+        obs = np.zeros(23, dtype=np.float32)  # Replace with real values later
+        return obs, {}
+
+
+    
+    def render(self, mode="human"):
+        pass
+    
+    def close(self):
+        p.disconnect()
+
+
+if __name__ == "__main__":
+    env=CaneEnv()
+    #env = Monitor(env)
+
+    
+    model = DQN("MlpPolicy",env,verbose=1)
+    #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
+
+    model.learn(total_timesteps=1000)
+
+    model.save("dqn_cane_model")
+    '''
+    model = PPO("MlpPolicy",env,verbose=1)
+    #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
+
+    model.learn(total_timesteps=1000)
+
+    model.save("ppo_cane_model")
+    '''
+    try:
+        while True:
+            # Testing if my github works
+            # For testing, use the original action space (movement only).
+            # For instance, randomly choose an action.
+            #action = env.action_space.sample()
+            #env.step(action)
+            
+
+            obs, _ = env.reset()
+            done = False
+            while not done:
+                action, _states = model.predict(obs)
+                obs, reward, done, _, _ = env.step(action)
+                time.sleep(1.0 / 30.0)  # Slow down for visualization
+
+
+            time.sleep(0.6)
+    except KeyboardInterrupt:
+        env.close
+
