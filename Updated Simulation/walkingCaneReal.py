@@ -105,7 +105,7 @@ class CaneEnv(gym.Env):
         # 2: Move left (-X)
         # 3: Move right (+X)
         # 4: Stop (no movement)
-        self.action_space = spaces.Discrete(5)
+        self.action_space = spaces.Discrete(9)
         
         # Simulation time step for the swing cycle.
         self.dt = 1.0 / 240.0
@@ -201,6 +201,7 @@ class CaneEnv(gym.Env):
                 if contact[8] < 0.01:
                     #print("Cane hits obstacle")
                     collision = True
+                    T = -T
                 p.changeVisualShape(self.cane_id, -1, rgbaColor=[1, 0, 0, 1])
             p.changeVisualShape(self.cane_id, -1, rgbaColor=[0, 1, 0, 1])
 
@@ -380,7 +381,7 @@ class CaneEnv(gym.Env):
 
         collision_detected = False  # Initialize collision_detected variable
 
-        print(action)
+        #print(action)
         action = action.item()
 
         if action == 0:  # Take 1 step forward
@@ -497,16 +498,14 @@ class CaneEnv(gym.Env):
 
         reward -= 0.5 #small time penalty
         
-        if action in [2, 3, 4, 6, 7, 8] and abs(angle_to_goal) >= abs(prev_angle_to_goal):
-            reward -= 1
+        if abs(angle_to_goal) > abs(prev_angle_to_goal):
+            reward -= 0.5  # Penalize turning away from the goal
 
-        '''
-        # Normalize to [-π, π]
-        print("angle to goal: ", angle_to_goal)
-        angle_diff = (angle_to_goal - prev_angle_to_goal + np.pi) % (2 * np.pi) - np.pi
-        reward -= 0.1 * abs(angle_diff)
-        '''
+        else:
+            # Reward turning to the goal
+            reward += 0.2  # Reward turning toward goal
 
+        print("Action:", action, "Reward:", reward)
 
         return reward
 
@@ -542,7 +541,7 @@ if __name__ == "__main__":
     #env = Monitor(env)
 
     
-    model = DQN("MlpPolicy",env,verbose=1)
+    model = DQN("MlpPolicy",env,verbose=1, exploration_initial_eps=1.0, exploration_final_eps=0.05, exploration_fraction=0.4, )
     #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
 
     model.learn(total_timesteps=1000)
@@ -569,9 +568,13 @@ if __name__ == "__main__":
             done = False
             while not done:
                 action, _states = model.predict(obs)
+                obs, reward, terminated, truncated, _ = env.step(action)
+                done = terminated or truncated
+                '''
+                action, _states = model.predict(obs)
                 obs, reward, done, _, _ = env.step(action)
                 time.sleep(1.0 / 30.0)  # Slow down for visualization
-
+                '''
 
             time.sleep(0.6)
     except KeyboardInterrupt:
