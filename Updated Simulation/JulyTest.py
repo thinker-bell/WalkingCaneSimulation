@@ -344,195 +344,91 @@ class CaneEnv(gym.Env):
 
         return lidar1_value, lidar2_value
 
-    
     def step(self, action):
-        
-        # First, run a full swing cycle (160° total swing) before moving.
-        #self.swing_cycle()
-        observation , collision, angle_to_goal = self.get_observation_with_swing()
-
-        # Now, update the cane's position based on the original movement action.
+        # Step 1: Get observation and current state
+        observation, collision, angle_to_goal = self.get_observation_with_swing()
         pos, orientation = p.getBasePositionAndOrientation(self.cane_id)
         pos = np.array(pos)
         roll, pitch, yaw = p.getEulerFromQuaternion(orientation)
         step_size = 0.3
 
-        # Define the rotation angles
-        '''
+        # Step 2: Define rotation angles
         rotation_angles = {
-            2: math.radians(90),  # short left
-            3: math.radians(60),  # medium left
-            4: math.radians(30),  # hard left
-            5: math.radians(-30),  # short right
-            6: math.radians(-60),  # medium right
-            7: math.radians(-90),  # hard right
-            8: math.radians(180)  # 180 deg turn around
-        } '''
-        rotation_angles = {
-            2: math.radians(30),  # short left
+            2: math.radians(30),   # short left
             3: math.radians(-30),  # short right
-            4: math.radians(60),  # medium left
+            4: math.radians(60),   # medium left
             5: math.radians(-60),  # medium right
-            6: math.radians(90),  # hard left
+            6: math.radians(90),   # hard left
             7: math.radians(-90),  # hard right
-            8: math.radians(180)  # 180 deg turn around
+            8: math.radians(180)   # turn around
         }
 
-
-        collision_detected = False  # Initialize collision_detected variable
-        
-        '''
-        #print(action)
-        action = action.item()
-
-        if action == 0:  # Take 1 step forward
-            #print("\n\nforward\n\n")
-            
-            # Calculate new position based on current orientation
-            new_pos = pos + np.array([-step_size * math.sin(yaw), step_size * math.cos(yaw), 0])
-            
-            # Check for collisions at the new position
-            temp_orientation = p.getQuaternionFromEuler([roll, pitch, yaw])
-            p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), temp_orientation)
-            contacts = p.getContactPoints(bodyA=self.cane_id)
-            
-            for contact in contacts:
-                # Only report if it's meaningful
-                if contact[8] < 0.01:  # Close contact distance
-                    collision_detected = True
-                    break
-            
-            # If a collision is detected, don't move the cane
-            if collision_detected:
-                p.resetBasePositionAndOrientation(self.cane_id, pos, orientation)
-                #print("Collision detected, cannot move through obstacle")
-                new_pos = pos  # Set new_pos to current pos
-                new_orientation = orientation
-            else:
-                _, new_orientation = p.getBasePositionAndOrientation(self.cane_id)
-            
-        elif action == 1:  # Stop
-            #print("\n\nno move\n\n")
-            new_pos = pos
-            new_orientation = orientation
-        
-        elif action in rotation_angles:  
-            new_pos = pos
-            new_orientation = p.getQuaternionFromEuler(
-                [self.baseline_roll, self.baseline_pitch, yaw + rotation_angles[action]]
-            )
-
-        else:
-            raise ValueError("Invalid action")
-
-        ### add collision check
-
-        # # Check for collisions at the new position
-        # temp_orientation = p.getQuaternionFromEuler([roll, pitch, yaw])
-        # p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), temp_orientation)
-        # contacts = p.getContactPoints(bodyA=self.cane_id)
-            
-        # for contact in contacts:
-        #         # Only report if it's meaningful
-        #     if contact[8] < 0.01:  # Close contact distance
-        #         collision_detected = True
-        #         break
-            
-        # # If a collision is detected, don't move the cane
-        # if collision_detected:
-        #     p.resetBasePositionAndOrientation(self.cane_id, pos, orientation)
-        #     #print("Collision detected, cannot move through obstacle")
-        #     new_pos = pos  # Set new_pos to current pos
-        #     new_orientation = orientation
-        # else:
-        #     _, new_orientation = p.getBasePositionAndOrientation(self.cane_id)
-
-
-        '''
-
+        # Step 3: Compute proposed action
         new_pos = np.array(pos)
-        new_pos = pos + np.array([-step_size * math.sin(yaw), step_size * math.cos(yaw), 0])
         new_yaw = yaw
 
-        # --- Action Handling ---
         if action == 0:  # Step forward
-            new_pos = np.array(pos) + np.array([
+            new_pos = pos + np.array([
                 -step_size * math.sin(yaw),
                 step_size * math.cos(yaw),
                 0
             ])
 
         elif action == 1:  # Stop
-            pass  # No movement or rotation
+            pass  # Keep position and orientation unchanged
 
-        elif action in rotation_angles:
-            new_yaw += rotation_angles[action]  # Update yaw only
+        elif action in rotation_angles:  # Rotate
+            new_yaw += rotation_angles[action]
 
         else:
             raise ValueError("Invalid action")
 
-        # --- Apply motion + Collision Check ---
-        temp_orientation = p.getQuaternionFromEuler([roll, pitch, new_yaw])
-        p.resetBasePositionAndOrientation(self.cane_id, np.array(new_pos).tolist(), temp_orientation)
+        # Step 4: Check for collision at proposed pose
+        proposed_orientation = p.getQuaternionFromEuler([roll, pitch, new_yaw])
+        p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), proposed_orientation)
         contacts = p.getContactPoints(bodyA=self.cane_id)
+        collision_detected = any(contact[8] < 0.01 for contact in contacts)
 
-        for contact in contacts:
-            if contact[8] < 0.01:  # Collision threshold
-                collision_detected = True
-                break
-
-        if collision_detected:
-            # Revert to original position and orientation
-            p.resetBasePositionAndOrientation(self.cane_id, np.array(new_pos).tolist(), orientation)
-            new_pos = pos + np.array([-step_size * math.sin(yaw), step_size * math.cos(yaw), 0])
-            new_orientation = orientation  # Ensure orientation is also reset
-            # Optional: print or track that a collision happened
-            # print("Collision detected, staying in place")
+        # Step 5: Apply or revert based on collision
+        if collision_detected and action == 0:
+            # Revert position and orientation
+            p.resetBasePositionAndOrientation(self.cane_id, pos.tolist(), orientation)
+            new_pos = pos
+            new_orientation = orientation
         else:
-            new_pos, new_orientation = p.getBasePositionAndOrientation(self.cane_id)
+            new_orientation = proposed_orientation
+            p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), new_orientation)
 
-
-        #################### new code test 
-
-
-
-        # Update the cane's position and orientation.
-        if not collision_detected or action != 0:
-            p.resetBasePositionAndOrientation(self.cane_id, np.array(new_pos).tolist(), new_orientation)
-
-            #p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), new_orientation)
-
-        # For observation, we return the cane's new center position.
+        # Step 6: Check if goal reached
         distance_to_goal = np.linalg.norm(new_pos - self.goal_location)
-        #print(distance_to_goal)
-
-        # Check if the cane has reached the goal location
         goal_location = False
-        if distance_to_goal < 0.5 :  # Adjust the threshold value as needed
-            # Stop the cane
+        if distance_to_goal < 0.5:
             p.resetBaseVelocity(self.cane_id, [0, 0, 0], [0, 0, 0])
-
-            # Display a notification
             print("Location Reached! Stopping the cane.")
             goal_location = True
-            # You can also add a notification using tkinter or other GUI libraries
-            # if you want a pop-up window.
+            return observation, 100, True, False, {
+                "goal_reached": True,
+                "collision": collision_detected,
+                "steps_taken": self.current_timestep,
+                "reward": 100
+            }
 
-            # Return done=True to indicate that the episode has ended
-            #print(100)
-            return observation, 100, True, False, {}
-
-        ################  CREATE REWARD VALUES #################
-
-        # variables I need to consider: 
-        # goal_location = False: boolean
-        # distance_to_goal: float
-        # previous distance to goal: float
-        # collision_detected: boolean
-
-        reward = self.compute_reward(goal_location, distance_to_goal, self.prev_distance_to_goal, collision, angle_to_goal, self.prev_angle_to_goal,action)
+        # Step 7: Compute reward
+        reward = self.compute_reward(
+            goal_location,
+            distance_to_goal,
+            self.prev_distance_to_goal,
+            collision,
+            angle_to_goal,
+            self.prev_angle_to_goal,
+            action
+        )
         self.prev_distance_to_goal = distance_to_goal
         self.prev_angle_to_goal = angle_to_goal
+
+        # Step 8: Prepare info and check episode done
+        self.current_timestep += 1
+        done = self.current_timestep >= CaneEnv.MAX_TIMESTEPS
 
         info = {
             "goal_reached": goal_location,
@@ -543,28 +439,152 @@ class CaneEnv(gym.Env):
 
         print(info)
 
-        #print(reward)
+        return observation, reward, done, False, info
 
-        #reward = -distance_to_goal
-        #done = False
+    # def step(self, action):
+        
+    #     # First, run a full swing cycle (160° total swing) before moving.
+    #     #self.swing_cycle()
+    #     observation , collision, angle_to_goal = self.get_observation_with_swing()
+
+    #     # Now, update the cane's position based on the original movement action.
+    #     pos, orientation = p.getBasePositionAndOrientation(self.cane_id)
+    #     pos = np.array(pos)
+    #     roll, pitch, yaw = p.getEulerFromQuaternion(orientation)
+    #     step_size = 0.3
+
+    #     # Define the rotation angles
+
+
+    #     rotation_angles = {
+    #         2: math.radians(30),  # short left
+    #         3: math.radians(-30),  # short right
+    #         4: math.radians(60),  # medium left
+    #         5: math.radians(-60),  # medium right
+    #         6: math.radians(90),  # hard left
+    #         7: math.radians(-90),  # hard right
+    #         8: math.radians(180)  # 180 deg turn around
+    #     }
+
+
+    #     collision_detected = False  # Initialize collision_detected variable
+
+
+    #     new_pos = np.array(pos)
+    #     new_pos = pos + np.array([-step_size * math.sin(yaw), step_size * math.cos(yaw), 0])
+    #     new_yaw = yaw
+
+    #     # --- Action Handling ---
+    #     if action == 0:  # Step forward
+    #         new_pos = np.array(pos) + np.array([
+    #             -step_size * math.sin(yaw),
+    #             step_size * math.cos(yaw),
+    #             0
+    #         ])
+
+    #     elif action == 1:  # Stop
+    #         pass  # No movement or rotation
+
+    #     elif action in rotation_angles:
+    #         new_yaw += rotation_angles[action]  # Update yaw only
+
+    #     else:
+    #         raise ValueError("Invalid action")
+
+    #     # --- Apply motion + Collision Check ---
+    #     temp_orientation = p.getQuaternionFromEuler([roll, pitch, new_yaw])
+    #     p.resetBasePositionAndOrientation(self.cane_id, np.array(new_pos).tolist(), temp_orientation)
+    #     contacts = p.getContactPoints(bodyA=self.cane_id)
+
+    #     for contact in contacts:
+    #         if contact[8] < 0.01:  # Collision threshold
+    #             collision_detected = True
+    #             break
+
+    #     if collision_detected:
+    #         # Revert to original position and orientation
+    #         p.resetBasePositionAndOrientation(self.cane_id, np.array(new_pos).tolist(), orientation)
+    #         new_pos = pos + np.array([-step_size * math.sin(yaw), step_size * math.cos(yaw), 0])
+    #         new_orientation = orientation  # Ensure orientation is also reset
+    #         # Optional: print or track that a collision happened
+    #         # print("Collision detected, staying in place")
+    #     else:
+    #         new_pos, new_orientation = p.getBasePositionAndOrientation(self.cane_id)
+
+
+    #     #################### new code test 
 
 
 
-        #obs = self.get_observation()
-        #print("Obs: ",obs)
-        ############### Current OBS values ################
-        # cane yaw angle
-        # primary lidar distance
-        # secondary lidar distance
-        # distance to goal 
-        #print(observation)
+    #     # Update the cane's position and orientation.
+    #     if not collision_detected or action != 0:
+    #         p.resetBasePositionAndOrientation(self.cane_id, np.array(new_pos).tolist(), new_orientation)
 
-        self.current_timestep += 1  # Increment timestep
-        done = self.current_timestep >= CaneEnv.MAX_TIMESTEPS
+    #         #p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), new_orientation)
+
+    #     # For observation, we return the cane's new center position.
+    #     distance_to_goal = np.linalg.norm(new_pos - self.goal_location)
+    #     #print(distance_to_goal)
+
+    #     # Check if the cane has reached the goal location
+    #     goal_location = False
+    #     if distance_to_goal < 0.5 :  # Adjust the threshold value as needed
+    #         # Stop the cane
+    #         p.resetBaseVelocity(self.cane_id, [0, 0, 0], [0, 0, 0])
+
+    #         # Display a notification
+    #         print("Location Reached! Stopping the cane.")
+    #         goal_location = True
+    #         # You can also add a notification using tkinter or other GUI libraries
+    #         # if you want a pop-up window.
+
+    #         # Return done=True to indicate that the episode has ended
+    #         #print(100)
+    #         return observation, 100, True, False, {}
+
+    #     ################  CREATE REWARD VALUES #################
+
+    #     # variables I need to consider: 
+    #     # goal_location = False: boolean
+    #     # distance_to_goal: float
+    #     # previous distance to goal: float
+    #     # collision_detected: boolean
+
+    #     reward = self.compute_reward(goal_location, distance_to_goal, self.prev_distance_to_goal, collision, angle_to_goal, self.prev_angle_to_goal,action)
+    #     self.prev_distance_to_goal = distance_to_goal
+    #     self.prev_angle_to_goal = angle_to_goal
+
+    #     info = {
+    #         "goal_reached": goal_location,
+    #         "collision": collision_detected,
+    #         "steps_taken": self.current_timestep,
+    #         "reward": reward
+    #     }
+
+    #     print(info)
+
+    #     #print(reward)
+
+    #     #reward = -distance_to_goal
+    #     #done = False
+
+
+
+    #     #obs = self.get_observation()
+    #     #print("Obs: ",obs)
+    #     ############### Current OBS values ################
+    #     # cane yaw angle
+    #     # primary lidar distance
+    #     # secondary lidar distance
+    #     # distance to goal 
+    #     #print(observation)
+
+    #     self.current_timestep += 1  # Increment timestep
+    #     done = self.current_timestep >= CaneEnv.MAX_TIMESTEPS
 
         
 
-        return observation, reward, done,False, info #{}
+    #     return observation, reward, done,False, info #{}
     
     
     def compute_reward(self, goal_location, distance_to_goal, prev_distance_to_goal, collision_detected,angle_to_goal,prev_angle_to_goal,action):
