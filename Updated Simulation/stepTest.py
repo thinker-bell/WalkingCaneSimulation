@@ -21,7 +21,7 @@ from stable_baselines3 import DQN
 
 
 class CaneEnv(gym.Env):
-    MAX_TIMESTEPS = 300  # Set a max limit for each episode
+    MAX_TIMESTEPS = 1000  # Set a max limit for each episode
     def __init__(self):
         super(CaneEnv, self).__init__()
         
@@ -82,7 +82,6 @@ class CaneEnv(gym.Env):
         self.cane_id = 1  # Add this line
          
         self.lidar_start_pos = [0, 0, self.cane_height / 8]
-        self.cumulative_reward = 0.0
 
         ############################ GOAL LOCATION ################################
         self.goal_location = np.array([2.0, -2.0, 1.4])
@@ -345,6 +344,7 @@ class CaneEnv(gym.Env):
 
         return lidar1_value, lidar2_value
 
+
     def step(self, action):
         # Step 1: Get observation and current state
         observation, collision, angle_to_goal = self.get_observation_with_swing()
@@ -352,18 +352,16 @@ class CaneEnv(gym.Env):
         pos = np.array(pos)
         roll, pitch, yaw = p.getEulerFromQuaternion(orientation)
         step_size = 0.3
-        self.last_cane_position, self.last_cane_orientation = p.getBasePositionAndOrientation(self.cane_id)
-
 
         # Step 2: Define rotation angles
         rotation_angles = {
-            2: math.radians(30),   # short left
-            3: math.radians(-30),  # short right
-            4: math.radians(60),   # medium left
-            5: math.radians(-60),  # medium right
-            6: math.radians(90),   # hard left
-            7: math.radians(-90),  # hard right
-            8: math.radians(180)   # turn around
+            2: math.radians(30),    # short left
+            3: math.radians(-30),   # short right
+            4: math.radians(60),    # medium left
+            5: math.radians(-60),   # medium right
+            6: math.radians(90),    # hard left
+            7: math.radians(-90),   # hard right
+            8: math.radians(180)    # turn around
         }
 
         # Step 3: Compute proposed action
@@ -376,13 +374,10 @@ class CaneEnv(gym.Env):
                 step_size * math.cos(yaw),
                 0
             ])
-
         elif action == 1:  # Stop
-            pass  # Keep position and orientation unchanged
-
-        elif action in rotation_angles:  # Rotate
+            pass  # No change
+        elif action in rotation_angles:
             new_yaw += rotation_angles[action]
-
         else:
             raise ValueError("Invalid action")
 
@@ -394,19 +389,18 @@ class CaneEnv(gym.Env):
 
         # Step 5: Apply or revert based on collision
         if collision_detected and action == 0:
-            # Revert position and orientation
+            # Revert to previous position/orientation
             p.resetBasePositionAndOrientation(self.cane_id, pos.tolist(), orientation)
-            p.stepSimulation() 
             new_pos = pos
-            #T = -T
             new_orientation = orientation
+
+            # Reverse swing direction (simulate cane direction reversal)
+            #self.T = -self.T
         else:
             new_orientation = proposed_orientation
             p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), new_orientation)
 
-        
-
-        # Step 6: Check if goal reached
+        # Step 6: Check if goal is reached
         distance_to_goal = np.linalg.norm(new_pos - self.goal_location)
         goal_location = False
         if distance_to_goal < 0.5:
@@ -419,8 +413,6 @@ class CaneEnv(gym.Env):
                 "steps_taken": self.current_timestep,
                 "reward": 100
             }
-        #else self.current_step >= self.MAX_TIMESTEPS:
-        #    done = True
 
         # Step 7: Compute reward
         reward = self.compute_reward(
@@ -435,23 +427,22 @@ class CaneEnv(gym.Env):
         self.prev_distance_to_goal = distance_to_goal
         self.prev_angle_to_goal = angle_to_goal
 
-        # Step 8: Prepare info and check episode done
+        # Step 8: Prepare info
         self.current_timestep += 1
         done = self.current_timestep >= CaneEnv.MAX_TIMESTEPS
-        self.cumulative_reward += reward
 
         info = {
             "goal_reached": goal_location,
             "collision": collision_detected,
             "steps_taken": self.current_timestep,
-            #"reward": reward,
-            "cumulative reward": self.cumulative_reward
+            "reward": reward
         }
 
         print(info)
-        #print(observation)
-
         return observation, reward, done, False, info
+
+
+
 
     # def step(self, action):
         
@@ -613,7 +604,7 @@ class CaneEnv(gym.Env):
             reward -= 5.0
             #print("----------------- PENALTY ------------------\n"*5)
 
-        #reward -= 0.5 #small time penalty
+        reward -= 0.5 #small time penalty
         
         if abs(angle_to_goal) > abs(prev_angle_to_goal):
             reward -= 0.5  # Penalize turning away from the goal
@@ -629,8 +620,7 @@ class CaneEnv(gym.Env):
 
     def reset(self, **kwargs):
         #print("\n RESET \n")
-        self.current_timestep = 0
-        self.cumulative_reward = 0.0 
+        self.current_timestep = 0 
         self.current_swing_deg = 0
         initial_orientation = p.getQuaternionFromEuler(
             [self.baseline_roll, self.baseline_pitch, math.radians(0)]
@@ -659,7 +649,7 @@ if __name__ == "__main__":
     #env = Monitor(env)
 
     
-    model = DQN("MlpPolicy",env,verbose=1, exploration_initial_eps=0.8, exploration_final_eps=0.02, exploration_fraction=0.2, )
+    model = DQN("MlpPolicy",env,verbose=1, exploration_initial_eps=1.0, exploration_final_eps=0.05, exploration_fraction=0.4, )
     #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
 
     model.learn(total_timesteps=1000)
