@@ -604,13 +604,14 @@ class CaneEnv(gym.Env):
 
         if goal_location:
             reward += 100.0
-        else:
-            reward += (prev_distance_to_goal - distance_to_goal) * 10
-            if distance_to_goal > prev_distance_to_goal:
-                reward -= 5  # penalty for moving away from the goal
+        #else:
+        #    reward += (prev_distance_to_goal - distance_to_goal) * 10
+        #    print("Test:",reward)
+            #if distance_to_goal > prev_distance_to_goal:
+            #    reward -= 5  # penalty for moving away from the goal
 
         if collision_detected:
-            reward -= 5.0
+            reward -= 2.0 
             #print("----------------- PENALTY ------------------\n"*5)
 
         #reward -= 0.5 #small time penalty
@@ -620,7 +621,7 @@ class CaneEnv(gym.Env):
 
         else:
             # Reward turning to the goal
-            reward += 0.2  # Reward turning toward goal
+            reward += 0.2  # Reward turning toward goal 
 
         print("Action:", action, "Reward:", reward)
 
