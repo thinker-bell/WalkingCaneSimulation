@@ -9,6 +9,7 @@ import numpy as np
 import pybullet as p
 import pybullet_data
 import time
+import random
 import math
 import os
 from gymnasium import spaces
@@ -123,38 +124,72 @@ class CaneEnv(gym.Env):
         self.observation_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
 
 
+        self.obstacle_ids = []
+        num_obstacles = 100
+        min_dist = 1.5  # Minimum spacing between any two
 
-        # ----------------- OBSTACLE 1 -----------------
-        self.obstacle_location = np.array([-1.0, 1.0, 0.5])  # Adjust height to be half the box height
-        self.obstacle_id = p.createMultiBody(
-            baseMass=0,
-            baseCollisionShapeIndex=p.createCollisionShape(
-                shapeType=p.GEOM_BOX,
-                halfExtents=[0.3, 0.3, 0.5]
-            ),
-            baseVisualShapeIndex=p.createVisualShape(
-                shapeType=p.GEOM_BOX,
-                halfExtents=[0.3, 0.3, 0.5],
-                rgbaColor=[0.7, 0.2, 0.2, 1]  # Reddish color
-            ),
-            basePosition=self.obstacle_location
-        )
-        
-        # ----------------- OBSTACLE 2 -----------------
-        self.obstacle_location = np.array([1.5, 2.0, 0.5])  # Adjust height to be half the box height
-        self.obstacle_id = p.createMultiBody(
-            baseMass=0,
-            baseCollisionShapeIndex=p.createCollisionShape(
-                shapeType=p.GEOM_SPHERE,
-                halfExtents=[0.3, 0.3, 0.5]
-            ),
-            baseVisualShapeIndex=p.createVisualShape(
-                shapeType=p.GEOM_SPHERE,
-                halfExtents=[0.3, 0.3, 0.5],
-                rgbaColor=[0.7, 0.2, 0.2, 3]  # Reddish color
-            ),
-            basePosition=self.obstacle_location
-        )
+        positions = []
+        bounds = (-20, 20)
+
+        while len(positions) < num_obstacles:
+            x = random.uniform(*bounds)
+            y = random.uniform(*bounds)
+            z = 0.5
+
+            # Check that this point is far enough from others
+            if all(np.linalg.norm(np.array([x, y]) - np.array([px, py])) > min_dist for px, py, _ in positions):
+                positions.append((x, y, z))
+
+                obstacle_id = p.createMultiBody(
+                    baseMass=0,
+                    baseCollisionShapeIndex=p.createCollisionShape(
+                        shapeType=p.GEOM_BOX,
+                        halfExtents=[0.3, 0.3, z]
+                    ),
+                    baseVisualShapeIndex=p.createVisualShape(
+                        shapeType=p.GEOM_BOX,
+                        halfExtents=[0.3, 0.3, z],
+                        rgbaColor=[0.8, 0.3, 0.3, 1]
+                    ),
+                    basePosition=[x, y, z]
+                )
+                self.obstacle_ids.append(obstacle_id)
+
+
+        # # ----------------- OBSTACLE 1 -----------------
+        # self.obstacle_ids = []  # Store for later use or removal
+
+        # spacing = 2.0  # space between obstacles
+        # rows = 5
+        # cols = 5
+        # obstacle_height = 0.5
+        # obstacle_half_extents = [0.3, 0.3, obstacle_height]
+
+        # start_x = -5
+        # start_y = -5
+
+        # for i in range(rows):
+        #     for j in range(cols):
+        #         x = start_x + i * spacing
+        #         y = start_y + j * spacing
+        #         z = obstacle_height  # Because half height
+
+        #         obstacle_id = p.createMultiBody(
+        #             baseMass=0,
+        #             baseCollisionShapeIndex=p.createCollisionShape(
+        #                 shapeType=p.GEOM_BOX,
+        #                 halfExtents=obstacle_half_extents
+        #             ),
+        #             baseVisualShapeIndex=p.createVisualShape(
+        #                 shapeType=p.GEOM_BOX,
+        #                 halfExtents=obstacle_half_extents,
+        #                 rgbaColor=[0.8, 0.3, 0.3, 1]
+        #             ),
+        #             basePosition=[x, y, z]
+        #         )
+
+        #         self.obstacle_ids.append(obstacle_id)
+
     ''' 
         Revamping to swig based on paramaters: 
         N = number of past and current readings to consider (keep a list where you push and pop values) 
@@ -457,152 +492,6 @@ class CaneEnv(gym.Env):
 
         return observation, reward, done, False, info
 
-    # def step(self, action):
-        
-    #     # First, run a full swing cycle (160° total swing) before moving.
-    #     #self.swing_cycle()
-    #     observation , collision, angle_to_goal = self.get_observation_with_swing()
-
-    #     # Now, update the cane's position based on the original movement action.
-    #     pos, orientation = p.getBasePositionAndOrientation(self.cane_id)
-    #     pos = np.array(pos)
-    #     roll, pitch, yaw = p.getEulerFromQuaternion(orientation)
-    #     step_size = 0.3
-
-    #     # Define the rotation angles
-
-
-    #     rotation_angles = {
-    #         2: math.radians(30),  # short left
-    #         3: math.radians(-30),  # short right
-    #         4: math.radians(60),  # medium left
-    #         5: math.radians(-60),  # medium right
-    #         6: math.radians(90),  # hard left
-    #         7: math.radians(-90),  # hard right
-    #         8: math.radians(180)  # 180 deg turn around
-    #     }
-
-
-    #     collision_detected = False  # Initialize collision_detected variable
-
-
-    #     new_pos = np.array(pos)
-    #     new_pos = pos + np.array([-step_size * math.sin(yaw), step_size * math.cos(yaw), 0])
-    #     new_yaw = yaw
-
-    #     # --- Action Handling ---
-    #     if action == 0:  # Step forward
-    #         new_pos = np.array(pos) + np.array([
-    #             -step_size * math.sin(yaw),
-    #             step_size * math.cos(yaw),
-    #             0
-    #         ])
-
-    #     elif action == 1:  # Stop
-    #         pass  # No movement or rotation
-
-    #     elif action in rotation_angles:
-    #         new_yaw += rotation_angles[action]  # Update yaw only
-
-    #     else:
-    #         raise ValueError("Invalid action")
-
-    #     # --- Apply motion + Collision Check ---
-    #     temp_orientation = p.getQuaternionFromEuler([roll, pitch, new_yaw])
-    #     p.resetBasePositionAndOrientation(self.cane_id, np.array(new_pos).tolist(), temp_orientation)
-    #     contacts = p.getContactPoints(bodyA=self.cane_id)
-
-    #     for contact in contacts:
-    #         if contact[8] < 0.01:  # Collision threshold
-    #             collision_detected = True
-    #             break
-
-    #     if collision_detected:
-    #         # Revert to original position and orientation
-    #         p.resetBasePositionAndOrientation(self.cane_id, np.array(new_pos).tolist(), orientation)
-    #         new_pos = pos + np.array([-step_size * math.sin(yaw), step_size * math.cos(yaw), 0])
-    #         new_orientation = orientation  # Ensure orientation is also reset
-    #         # Optional: print or track that a collision happened
-    #         # print("Collision detected, staying in place")
-    #     else:
-    #         new_pos, new_orientation = p.getBasePositionAndOrientation(self.cane_id)
-
-
-    #     #################### new code test 
-
-
-
-    #     # Update the cane's position and orientation.
-    #     if not collision_detected or action != 0:
-    #         p.resetBasePositionAndOrientation(self.cane_id, np.array(new_pos).tolist(), new_orientation)
-
-    #         #p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), new_orientation)
-
-    #     # For observation, we return the cane's new center position.
-    #     distance_to_goal = np.linalg.norm(new_pos - self.goal_location)
-    #     #print(distance_to_goal)
-
-    #     # Check if the cane has reached the goal location
-    #     goal_location = False
-    #     if distance_to_goal < 0.5 :  # Adjust the threshold value as needed
-    #         # Stop the cane
-    #         p.resetBaseVelocity(self.cane_id, [0, 0, 0], [0, 0, 0])
-
-    #         # Display a notification
-    #         print("Location Reached! Stopping the cane.")
-    #         goal_location = True
-    #         # You can also add a notification using tkinter or other GUI libraries
-    #         # if you want a pop-up window.
-
-    #         # Return done=True to indicate that the episode has ended
-    #         #print(100)
-    #         return observation, 100, True, False, {}
-
-    #     ################  CREATE REWARD VALUES #################
-
-    #     # variables I need to consider: 
-    #     # goal_location = False: boolean
-    #     # distance_to_goal: float
-    #     # previous distance to goal: float
-    #     # collision_detected: boolean
-
-    #     reward = self.compute_reward(goal_location, distance_to_goal, self.prev_distance_to_goal, collision, angle_to_goal, self.prev_angle_to_goal,action)
-    #     self.prev_distance_to_goal = distance_to_goal
-    #     self.prev_angle_to_goal = angle_to_goal
-
-    #     info = {
-    #         "goal_reached": goal_location,
-    #         "collision": collision_detected,
-    #         "steps_taken": self.current_timestep,
-    #         "reward": reward
-    #     }
-
-    #     print(info)
-
-    #     #print(reward)
-
-    #     #reward = -distance_to_goal
-    #     #done = False
-
-
-
-    #     #obs = self.get_observation()
-    #     #print("Obs: ",obs)
-    #     ############### Current OBS values ################
-    #     # cane yaw angle
-    #     # primary lidar distance
-    #     # secondary lidar distance
-    #     # distance to goal 
-    #     #print(observation)
-
-    #     self.current_timestep += 1  # Increment timestep
-    #     done = self.current_timestep >= CaneEnv.MAX_TIMESTEPS
-
-        
-
-    #     return observation, reward, done,False, info #{}
-    
-    
     def compute_reward(self, goal_location, distance_to_goal, prev_distance_to_goal, collision_detected,angle_to_goal,prev_angle_to_goal,action):
         reward = 0.0
 
