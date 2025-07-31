@@ -11,7 +11,6 @@ import pybullet_data
 import time
 import random
 import math
-import os
 from gymnasium import spaces
 from collections import deque
 from stable_baselines3 import DQN
@@ -153,42 +152,9 @@ class CaneEnv(gym.Env):
                     ),
                     basePosition=[x, y, z]
                 )
+                self.obstacle_positions = [(x, y) for x, y, z in positions]
                 self.obstacle_ids.append(obstacle_id)
 
-
-        # # ----------------- OBSTACLE 1 -----------------
-        # self.obstacle_ids = []  # Store for later use or removal
-
-        # spacing = 2.0  # space between obstacles
-        # rows = 5
-        # cols = 5
-        # obstacle_height = 0.5
-        # obstacle_half_extents = [0.3, 0.3, obstacle_height]
-
-        # start_x = -5
-        # start_y = -5
-
-        # for i in range(rows):
-        #     for j in range(cols):
-        #         x = start_x + i * spacing
-        #         y = start_y + j * spacing
-        #         z = obstacle_height  # Because half height
-
-        #         obstacle_id = p.createMultiBody(
-        #             baseMass=0,
-        #             baseCollisionShapeIndex=p.createCollisionShape(
-        #                 shapeType=p.GEOM_BOX,
-        #                 halfExtents=obstacle_half_extents
-        #             ),
-        #             baseVisualShapeIndex=p.createVisualShape(
-        #                 shapeType=p.GEOM_BOX,
-        #                 halfExtents=obstacle_half_extents,
-        #                 rgbaColor=[0.8, 0.3, 0.3, 1]
-        #             ),
-        #             basePosition=[x, y, z]
-        #         )
-
-        #         self.obstacle_ids.append(obstacle_id)
 
     ''' 
         Revamping to swig based on paramaters: 
@@ -244,38 +210,24 @@ class CaneEnv(gym.Env):
             p.stepSimulation()
             time.sleep(self.dt)
 
-        # After K steps, compute Cartesian distance to goal
+        # After K steps, find the angle to goal
+        # get x and y of both goal location and cane base
         cane_x, cane_y, cane_z = pos
-        dx = self.goal_location[0] - cane_x
-        dy = self.goal_location[1] - cane_y
-        dz = self.goal_location[2] - cane_z
+        goal_x, goal_y = self.goal_location[:2]
+
+        dx = goal_x - cane_x
+        dy = goal_y - cane_y
 
         distance_to_goal = math.hypot(dx, dy)
-        
+        angle_to_goal = math.atan2(dy, dx) 
 
-        #angle_to_goal_global = math.atan2(dy, dx)
-        #angle_to_goal = angle_to_goal_global - cane_yaw
+        # adding the subtraction of which direction the cane is facing
+        #goal_angle = math.atan2(dy, dx)
+        #angle_to_goal = goal_angle - cane_yaw
 
-        # Example: normalized angle to goal in radians ^^^^^^^^^^^^
-        angle_to_goal = np.arctan2(dz, dx) - cane_yaw
-        angle_to_goal = (angle_to_goal + np.pi) % (2 * np.pi) - np.pi  # normalize to [-π, π]
-        
-        '''
-        print("Angle to goal",angle_to_goal)
+        # Normalize to [-π, π]
+        #angle_to_goal = (angle_to_goal + np.pi) % (2 * np.pi) - np.pi
 
-        ############### TEST DIRECTION ISSUE #####################
-        print("goal location x", self.goal_location[0])
-        print("cane x", cane_x)
-        print("cane y", cane_y)
-        print("Cane Yaw:", cane_yaw)
-        print("dx:", dx, "dz:", dz)
-        print("atan2(dz, dx):", math.atan2(dz, dx))
-        print("Raw angle to goal:", math.atan2(dz, dx) - cane_yaw)
-        print("Normalized angle:", angle_to_goal)
-
-        #####################################################
-        '''
-        
 
         # Add position & direction to goal
         # Updated observation space:
@@ -497,35 +449,55 @@ class CaneEnv(gym.Env):
 
         if goal_location:
             reward += 100.0
-        #else:
-        #    reward += (prev_distance_to_goal - distance_to_goal) * 10
-        #    print("Test:",reward)
-            #if distance_to_goal > prev_distance_to_goal:
-            #    reward -= 5  # penalty for moving away from the goal
+        else:
+            # penalty for moving away from goal
+            reward += (prev_distance_to_goal - distance_to_goal) * 10
+            print("Test:",reward)
+            if distance_to_goal > prev_distance_to_goal:
+                reward -= 0.5  # penalty for moving away from the goal
 
         if collision_detected:
             reward -= 2.0 
-            #print("----------------- PENALTY ------------------\n"*5)
 
         #reward -= 0.5 #small time penalty
         
-        if abs(angle_to_goal) > abs(prev_angle_to_goal):
-            reward -= 0.5  # Penalize turning away from the goal
+        #considering the angles and turning away from the goal
+        # will this still be relevant with my updated angle ?? 
+        # if abs(angle_to_goal) > abs(prev_angle_to_goal):
+        #     reward -= 0.5  # Penalize turning away from the goal
 
-        else:
-            # Reward turning to the goal
-            reward += 0.2  # Reward turning toward goal 
+        # else:
+        #     # Reward turning to the goal
+        #     reward += 0.2  # Reward turning toward goal 
 
         print("Action:", action, "Reward:", reward)
 
         return reward
 
+    def random_starting_pos(self,obstacles, safe_radius=1.0):
+        bounds = (-20, 20)
+        for _ in range(20):
+            x = random.uniform(*bounds)
+            y = random.uniform(*bounds)
+            vertical_offset = (self.cane_height / 2) * math.cos(math.radians(45))
+
+            if all(math.hypot(x - ox, y - oy) >= safe_radius for ox, oy in obstacles):
+                return [x, y, vertical_offset + 0.75]  # Z is height
+        raise RuntimeError("Could not find valid spawn position")
+
+         
 
     def reset(self, **kwargs):
         #print("\n RESET \n")
         self.current_timestep = 0
         self.cumulative_reward = 0.0 
         self.current_swing_deg = 0
+
+        self.cane_start_pos = self.random_starting_pos(
+            obstacles=self.obstacle_positions,
+            safe_radius=1.0
+        )
+
         initial_orientation = p.getQuaternionFromEuler(
             [self.baseline_roll, self.baseline_pitch, math.radians(0)]
         )
