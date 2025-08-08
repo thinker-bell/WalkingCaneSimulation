@@ -47,6 +47,8 @@ class CaneEnv(gym.Env):
         # We'll let the cane have an additional yaw (swing) that is updated during the swing cycle.
         self.current_swing_deg = 0  # in degrees
         
+        
+
         # Compute vertical offset so that the bottom nearly touches the ground.
         vertical_offset = (self.cane_height / 2) * math.cos(math.radians(45))
         self.cane_start_pos = [0, 0, vertical_offset + 0.75]
@@ -83,6 +85,11 @@ class CaneEnv(gym.Env):
          
         self.lidar_start_pos = [0, 0, self.cane_height / 8]
         self.cumulative_reward = 0.0
+
+        ###########
+        self.last_safe_pos = inertial_pos
+        self.last_safe_orientation = initial_orientation
+        self.collision_count = 0
 
         ############################ GOAL LOCATION ################################
         self.goal_location = np.array([2.0, -2.0, 1.4])
@@ -124,11 +131,11 @@ class CaneEnv(gym.Env):
 
 
         self.obstacle_ids = []
-        num_obstacles = 100
+        num_obstacles = 30
         min_dist = 1.5  # Minimum spacing between any two
 
         positions = []
-        bounds = (-20, 20)
+        bounds = (-10, 10)
 
         while len(positions) < num_obstacles:
             x = random.uniform(*bounds)
@@ -395,7 +402,40 @@ class CaneEnv(gym.Env):
             new_orientation = proposed_orientation
             p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), new_orientation)
 
-        
+
+        if not hasattr(self, 'safe_steps_count'):
+            self.safe_steps_count = 0
+
+        # contacts = p.getContactPoints(bodyA=self.cane_id)
+        # collision_detected = any(contact[8] < 0.01 for contact in contacts)
+
+        # if collision_detected:
+        #     self.collision_count += 1
+        #     self.safe_steps_count = 0  # reset safe streak
+
+        #     # Reset to last safe pos
+        #     p.resetBasePositionAndOrientation(self.cane_id, self.last_safe_pos, self.last_safe_orientation)
+
+        #     # Force teleport if stuck too long
+        #     if self.collision_count >= 3:
+        #         offset = np.random.uniform(-0.5, 0.5, size=3)
+        #         new_pos = np.array(self.last_safe_pos) + offset
+        #         p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), self.last_safe_orientation)
+        #         self.collision_count = 0
+
+        # else:
+        #     self.collision_count = 0
+        #     self.safe_steps_count += 1
+
+        #     # Only update last safe position after N consecutive safe steps
+        #     if self.safe_steps_count >= 2:
+        #         self.last_safe_pos, self.last_safe_orientation = p.getBasePositionAndOrientation(self.cane_id)
+
+
+
+
+
+
 
         # Step 6: Check if goal reached
         distance_to_goal = np.linalg.norm(new_pos - self.goal_location)
@@ -454,7 +494,7 @@ class CaneEnv(gym.Env):
             reward += (prev_distance_to_goal - distance_to_goal) * 10
             print("Test:",reward)
             if distance_to_goal > prev_distance_to_goal:
-                reward -= 0.5  # penalty for moving away from the goal
+                reward -= 0.25  # penalty for moving away from the goal
 
         if collision_detected:
             reward -= 2.0 
@@ -463,19 +503,25 @@ class CaneEnv(gym.Env):
         
         #considering the angles and turning away from the goal
         # will this still be relevant with my updated angle ?? 
-        # if abs(angle_to_goal) > abs(prev_angle_to_goal):
-        #     reward -= 0.5  # Penalize turning away from the goal
+        # should I change it away from absolute angle 
 
-        # else:
-        #     # Reward turning to the goal
-        #     reward += 0.2  # Reward turning toward goal 
+
+        # if abs(angle_to_goal) > abs(prev_angle_to_goal):
+        #     reward -= 0.25  # Penalize turning away from the goal
+
+        if angle_to_goal > prev_angle_to_goal:
+             reward -= 0.25  # Penalize turning away from the goal
+
+        else:
+            # Reward turning to the goal
+            reward += 0  # Reward turning toward goal 
 
         print("Action:", action, "Reward:", reward)
 
         return reward
 
     def random_starting_pos(self,obstacles, safe_radius=1.0):
-        bounds = (-20, 20)
+        bounds = (-10, 10)
         for _ in range(20):
             x = random.uniform(*bounds)
             y = random.uniform(*bounds)
@@ -560,7 +606,7 @@ if __name__ == "__main__":
                 time.sleep(1.0 / 30.0)  # Slow down for visualization
                 '''
 
-            time.sleep(0.6)
+            #time.sleep(0.6)
     except KeyboardInterrupt:
         env.close
 
