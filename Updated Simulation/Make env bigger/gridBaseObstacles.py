@@ -21,12 +21,26 @@ from stable_baselines3 import DQN
 
 
 class CaneEnv(gym.Env):
-    MAX_TIMESTEPS = 300  # Set a max limit for each episode
+    MAX_TIMESTEPS = 200 # 30 seconds worth of steps
+
+    #MAX_TIMESTEPS = 300  # Set a max limit for each episode
     def __init__(self):
         super(CaneEnv, self).__init__()
         
         # Connect to PyBullet in GUI mode and set up simulation.
-        self.physics_client = p.connect(p.GUI)
+        #self.physics_client = p.connect(p.GUI)
+
+        # if p.isConnected():
+        #     p.disconnect()
+        
+        if p.isConnected():
+            p.disconnect()  # ensure clean start
+
+        
+        self.physics_client = p.connect(p.DIRECT)
+        p.setAdditionalSearchPath(pybullet_data.getDataPath())
+        
+
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.resetSimulation()
         p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1)
@@ -90,6 +104,7 @@ class CaneEnv(gym.Env):
         self.last_safe_pos = inertial_pos
         self.last_safe_orientation = initial_orientation
         self.collision_count = 0
+        self.safe_steps_count = 0
 
         ############################ GOAL LOCATION ################################
         self.goal_location = np.array([2.0, -2.0, 1.4])
@@ -113,7 +128,7 @@ class CaneEnv(gym.Env):
         # 2: Move left (-X)
         # 3: Move right (+X)
         # 4: Stop (no movement)
-        self.action_space = spaces.Discrete(9)
+        self.action_space = spaces.Discrete(11)
         
         # Simulation time step for the swing cycle.
         self.dt = 1.0 / 240.0
@@ -131,7 +146,7 @@ class CaneEnv(gym.Env):
 
 
         self.obstacle_ids = []
-        num_obstacles = 30
+        num_obstacles = 40
         min_dist = 1.5  # Minimum spacing between any two
 
         positions = []
@@ -211,11 +226,15 @@ class CaneEnv(gym.Env):
                     #print("Cane hits obstacle")
                     collision = True
                     T = -T
+
+                    ############ Test collision on SWING ###################
+                    p.resetBasePositionAndOrientation(self.cane_id, pos, cane_orientation)
+                    break
                 p.changeVisualShape(self.cane_id, -1, rgbaColor=[1, 0, 0, 1])
             p.changeVisualShape(self.cane_id, -1, rgbaColor=[0, 1, 0, 1])
 
             p.stepSimulation()
-            time.sleep(self.dt)
+            #time.sleep(self.dt)
 
         # After K steps, find the angle to goal
         # get x and y of both goal location and cane base
@@ -340,49 +359,100 @@ class CaneEnv(gym.Env):
         return lidar1_value, lidar2_value
 
     def step(self, action):
+
+        if isinstance(action, np.ndarray):
+            action = int(action.item())  # Convert numpy array to plain int
+
+
         # Step 1: Get observation and current state
         observation, collision, angle_to_goal = self.get_observation_with_swing()
         pos, orientation = p.getBasePositionAndOrientation(self.cane_id)
         pos = np.array(pos)
         roll, pitch, yaw = p.getEulerFromQuaternion(orientation)
-        step_size = 0.3
+        step_size = 0.5
         self.last_cane_position, self.last_cane_orientation = p.getBasePositionAndOrientation(self.cane_id)
 
+        # Example: extend action space
+        # 0 = small forward, 1 = medium forward, 2 = big forward,
+        # 3 = stop, 4–10 = turns
+        self.action_space = spaces.Discrete(11)
 
-        # Step 2: Define rotation angles
-        rotation_angles = {
-            2: math.radians(30),   # short left
-            3: math.radians(-30),  # short right
-            4: math.radians(60),   # medium left
-            5: math.radians(-60),  # medium right
-            6: math.radians(90),   # hard left
-            7: math.radians(-90),  # hard right
-            8: math.radians(180)   # turn around
+
+
+
+
+        step_sizes = {
+            0: 0.3,   # small forward
+            1: 0.6,   # medium forward
+            2: 1.0    # big forward
         }
 
-        # Step 3: Compute proposed action
-        new_pos = np.array(pos)
+        rotation_angles = {
+            4: math.radians(30),   # short left
+            5: math.radians(-30),  # short right
+            6: math.radians(60),   # medium left
+            7: math.radians(-60),  # medium right
+            8: math.radians(90),   # hard left
+            9: math.radians(-90),  # hard right
+            10: math.radians(180)  # turn around
+        }
+
+        # In step():
+
         new_yaw = yaw
-        
-
-        if isinstance(action, np.ndarray):
-            action = action.item()
-
-        if action == 0:  # Step forward
+        if action in step_sizes:
+            step_size = step_sizes[action]
             new_pos = pos + np.array([
                 -step_size * math.sin(yaw),
                 step_size * math.cos(yaw),
                 0
             ])
-
-        elif action == 1:  # Stop
-            pass  # Keep position and orientation unchanged
-
-        elif action in rotation_angles:  # Rotate
-            new_yaw += rotation_angles[action]
-
+        elif action == 3:  # stop
+            new_pos = pos
+        elif action in rotation_angles:
+            new_yaw = yaw + rotation_angles[action]
+            proposed_orientation = p.getQuaternionFromEuler([roll, pitch, new_yaw])
+            # Keep same position, just rotate
+            new_pos = pos
         else:
-            raise ValueError("Invalid action")
+            raise ValueError(f"Invalid action: {action}")
+
+
+
+        # # Step 2: Define rotation angles
+        # rotation_angles = {
+        #     2: math.radians(30),   # short left
+        #     3: math.radians(-30),  # short right
+        #     4: math.radians(60),   # medium left
+        #     5: math.radians(-60),  # medium right
+        #     6: math.radians(90),   # hard left
+        #     7: math.radians(-90),  # hard right
+        #     8: math.radians(180)   # turn around
+        # }
+
+        # # Step 3: Compute proposed action
+        # new_pos = np.array(pos)
+        # new_yaw = yaw
+        
+
+        # if isinstance(action, np.ndarray):
+        #     action = action.item()
+
+        # if action == 0:  # Step forward
+        #     new_pos = pos + np.array([
+        #         -step_size * math.sin(yaw),
+        #         step_size * math.cos(yaw),
+        #         0
+        #     ])
+
+        # elif action == 1:  # Stop
+        #     pass  # Keep position and orientation unchanged
+
+        # elif action in rotation_angles:  # Rotate
+        #     new_yaw += rotation_angles[action]
+
+        # else:
+        #     raise ValueError("Invalid action")
 
         # Step 4: Check for collision at proposed pose
         proposed_orientation = p.getQuaternionFromEuler([roll, pitch, new_yaw])
@@ -390,21 +460,75 @@ class CaneEnv(gym.Env):
         contacts = p.getContactPoints(bodyA=self.cane_id)
         collision_detected = any(contact[8] < 0.01 for contact in contacts)
 
-        # Step 5: Apply or revert based on collision
-        if collision_detected and action == 0:
-            # Revert position and orientation
-            p.resetBasePositionAndOrientation(self.cane_id, pos.tolist(), orientation)
-            p.stepSimulation() 
-            new_pos = pos
-            #T = -T
-            new_orientation = orientation
-        else:
-            new_orientation = proposed_orientation
-            p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), new_orientation)
+
+        if collision_detected:
+            self.collision_count += 1
+            # Push the cane slightly backwards along its facing direction
+            if self.collision_count >= 4:
+                # Too many collisions – reset to last safe pos
+                p.resetBasePositionAndOrientation(self.cane_id, self.last_safe_pos, self.last_safe_orientation)
+                self.collision_count = 0  # Reset tracker
+            else:
+                backoff_distance = 0.3
+                backoff_vector = [
+                    backoff_distance * math.sin(yaw),
+                    -backoff_distance * math.cos(yaw),
+                    0
+                ]
+                escape_pos = [
+                    pos[0] + backoff_vector[0],
+                    pos[1] + backoff_vector[1],
+                    (self.cane_height / 2) * math.cos(math.radians(45)) + 0.75
+                ]
+                p.resetBasePositionAndOrientation(self.cane_id, escape_pos, orientation)
 
 
-        if not hasattr(self, 'safe_steps_count'):
-            self.safe_steps_count = 0
+
+
+        # if collision_detected:
+        #     self.collision_count += 1
+        #     self.safe_steps_count = 0
+        #     #p.resetBasePositionAndOrientation(self.cane_id, self.last_safe_pos, self.last_safe_orientation)
+        #     pos = list(self.last_safe_pos)
+        #     pos[2] = (self.cane_height / 2) * math.cos(math.radians(45)) + 0.75
+        #     p.resetBasePositionAndOrientation(self.cane_id, pos, self.last_safe_orientation)
+
+
+        #     if self.collision_count >= 3:
+        #         offset = np.random.uniform(-0.5, 0.5, size=3)
+        #         new_pos = np.array(self.last_safe_pos) + offset
+                
+        #         pos = list(self.last_safe_pos)
+        #         pos[2] = (self.cane_height / 2) * math.cos(math.radians(45)) + 0.75
+        #         p.resetBasePositionAndOrientation(self.cane_id, pos, self.last_safe_orientation)
+
+                
+        #         #p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), self.last_safe_orientation)
+        #         self.collision_count = 0
+        # else:
+        #     self.collision_count = 0
+        #     self.safe_steps_count += 1
+        #     if self.safe_steps_count >= 2:
+        #         self.last_safe_pos, self.last_safe_orientation = p.getBasePositionAndOrientation(self.cane_id)
+
+
+
+        ###################################
+        # # Step 5: Apply or revert based on collision
+        # if collision_detected: #and action == 0:
+        #     # Revert position and orientation
+        #     p.resetBasePositionAndOrientation(self.cane_id, pos.tolist(), orientation)
+        #     p.stepSimulation() 
+        #     new_pos = pos
+        #     #T = -T
+        #     new_orientation = orientation
+        # else:
+        #     new_orientation = proposed_orientation
+        #     p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), new_orientation)
+
+
+        # if not hasattr(self, 'safe_steps_count'):
+        #     self.safe_steps_count = 0
 
         # contacts = p.getContactPoints(bodyA=self.cane_id)
         # collision_detected = any(contact[8] < 0.01 for contact in contacts)
@@ -442,7 +566,7 @@ class CaneEnv(gym.Env):
         goal_location = False
         if distance_to_goal < 0.5:
             p.resetBaseVelocity(self.cane_id, [0, 0, 0], [0, 0, 0])
-            print("Location Reached! Stopping the cane.")
+            #print("Location Reached! Stopping the cane.")
             goal_location = True
             return observation, 100, True, False, {
                 "goal_reached": True,
@@ -479,7 +603,7 @@ class CaneEnv(gym.Env):
             "cumulative reward": self.cumulative_reward
         }
 
-        print(info)
+        #print(info)
         #print(observation)
 
         return observation, reward, done, False, info
@@ -492,31 +616,23 @@ class CaneEnv(gym.Env):
         else:
             # penalty for moving away from goal
             reward += (prev_distance_to_goal - distance_to_goal) * 10
-            print("Test:",reward)
+            #print("Test:",reward)
             if distance_to_goal > prev_distance_to_goal:
                 reward -= 0.25  # penalty for moving away from the goal
 
         if collision_detected:
             reward -= 2.0 
 
-        #reward -= 0.5 #small time penalty
+        reward -= 0.1 #small time penalty
         
         #considering the angles and turning away from the goal
         # will this still be relevant with my updated angle ?? 
         # should I change it away from absolute angle 
 
+        angle_diff = abs(prev_angle_to_goal) - abs(angle_to_goal)
+        reward += angle_diff * 0.25  # scale as you like
 
-        # if abs(angle_to_goal) > abs(prev_angle_to_goal):
-        #     reward -= 0.25  # Penalize turning away from the goal
-
-        if angle_to_goal > prev_angle_to_goal:
-             reward -= 0.25  # Penalize turning away from the goal
-
-        else:
-            # Reward turning to the goal
-            reward += 0  # Reward turning toward goal 
-
-        print("Action:", action, "Reward:", reward)
+        #print("Action:", action, "Reward:", reward)
 
         return reward
 
@@ -531,10 +647,14 @@ class CaneEnv(gym.Env):
                 return [x, y, vertical_offset + 0.75]  # Z is height
         raise RuntimeError("Could not find valid spawn position")
 
-         
 
     def reset(self, **kwargs):
-        #print("\n RESET \n")
+        if not p.isConnected():
+            self.physics_client = p.connect(p.DIRECT)
+        # Reset simulation or just reset positions?
+
+        # If you want to keep objects, don't call resetSimulation here.
+
         self.current_timestep = 0
         self.cumulative_reward = 0.0 
         self.current_swing_deg = 0
@@ -545,17 +665,80 @@ class CaneEnv(gym.Env):
         )
 
         initial_orientation = p.getQuaternionFromEuler(
-            [self.baseline_roll, self.baseline_pitch, math.radians(0)]
+            [self.baseline_roll, self.baseline_pitch, 0]
         )
+
+        # Reset position/orientation of cane only
         p.resetBasePositionAndOrientation(self.cane_id, self.cane_start_pos, initial_orientation)
+
         pos, _ = p.getBasePositionAndOrientation(self.cane_id)
         self.prev_distance_to_goal = np.linalg.norm(np.array(pos) - np.array(self.goal_location))
         self.prev_angle_to_goal = 0
 
-        # Changed to 13 to meet the new array requirements. 
-        # now includes polar coordinates
-        obs = np.zeros(23, dtype=np.float32)  # Replace with real values later
+        obs = np.zeros(23, dtype=np.float32)
         return obs, {}
+
+
+
+
+    # def reset(self, **kwargs):
+    #     # if not p.isConnected():
+    #     #     p.connect(p.DIRECT)  # For training
+        
+    #     self.current_timestep = 0
+    #     self.cumulative_reward = 0.0 
+    #     self.current_swing_deg = 0
+
+    #     self.cane_start_pos = self.random_starting_pos(
+    #         obstacles=self.obstacle_positions,
+    #         safe_radius=1.0
+    #     )
+
+    #     initial_orientation = p.getQuaternionFromEuler(
+    #         [self.baseline_roll, self.baseline_pitch, math.radians(0)]
+    #     )
+        
+    #     # Just reset cane position, don't reload URDF if not needed
+    #     p.resetBasePositionAndOrientation(self.cane_id, self.cane_start_pos, initial_orientation)
+
+    #     pos, _ = p.getBasePositionAndOrientation(self.cane_id)
+        
+    #     self.prev_distance_to_goal = np.linalg.norm(np.array(pos) - np.array(self.goal_location))
+    #     self.prev_angle_to_goal = 0
+
+    #     obs = np.zeros(23, dtype=np.float32)  # Replace with real values
+    #     return obs, {}
+        
+
+    # def reset(self, **kwargs):
+    #     if not p.isConnected():
+    #         p.connect(p.DIRECT)  # Or p.GUI if you want a visible simulation
+
+    #     #print("\n RESET \n")
+    #     self.current_timestep = 0
+    #     self.cumulative_reward = 0.0 
+    #     self.current_swing_deg = 0
+
+    #     self.cane_start_pos = self.random_starting_pos(
+    #         obstacles=self.obstacle_positions,
+    #         safe_radius=1.0
+    #     )
+
+    #     initial_orientation = p.getQuaternionFromEuler(
+    #         [self.baseline_roll, self.baseline_pitch, math.radians(0)]
+    #     )
+    #     p.resetBasePositionAndOrientation(self.cane_id, self.cane_start_pos, initial_orientation)
+        
+       
+    #     pos, _ = p.getBasePositionAndOrientation(self.cane_id)
+        
+    #     self.prev_distance_to_goal = np.linalg.norm(np.array(pos) - np.array(self.goal_location))
+    #     self.prev_angle_to_goal = 0
+
+    #     # Changed to 13 to meet the new array requirements. 
+    #     # now includes polar coordinates
+    #     obs = np.zeros(23, dtype=np.float32)  # Replace with real values later
+    #     return obs, {}
 
 
     
@@ -563,6 +746,7 @@ class CaneEnv(gym.Env):
         pass
     
     def close(self):
+        #if p.isConnected():
         p.disconnect()
 
 
@@ -571,12 +755,31 @@ if __name__ == "__main__":
     #env = Monitor(env)
 
     
-    model = DQN("MlpPolicy",env,verbose=1, exploration_initial_eps=0.8, exploration_final_eps=0.02, exploration_fraction=0.2, )
+    #model = DQN("MlpPolicy",env,verbose=1, exploration_initial_eps=0.8, exploration_final_eps=0.02, exploration_fraction=0.2, )
+    model = DQN(
+        "MlpPolicy",
+        env,
+        verbose=1,
+        learning_rate=1e-4, 
+        buffer_size=100_000,
+        learning_starts=10_000,
+        batch_size=64,
+        tau=1.0,  # Hard update (DQN default)
+        train_freq=4,
+        target_update_interval=500,
+        exploration_initial_eps=1.0,
+        exploration_final_eps=0.05,
+        exploration_fraction=0.2,  # decay over 20% of training
+        gamma=0.95,
+    )
+
     #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
 
-    model.learn(total_timesteps=1000)
+    model.learn(total_timesteps=10000 * CaneEnv.MAX_TIMESTEPS)
 
     model.save("dqn_cane_model")
+    print("Model saved after training.")
+    
     '''
     model = PPO("MlpPolicy",env,verbose=1)
     #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
@@ -597,7 +800,8 @@ if __name__ == "__main__":
             obs, _ = env.reset()
             done = False
             while not done:
-                action, _states = model.predict(obs)
+                action, _states = model.predict(obs, deterministic=True)
+                #action, _states = model.predict(obs)
                 obs, reward, terminated, truncated, _ = env.step(action)
                 done = terminated or truncated
                 '''
@@ -607,6 +811,11 @@ if __name__ == "__main__":
                 '''
 
             #time.sleep(0.6)
+
+    
     except KeyboardInterrupt:
-        env.close
+        print("Keyboard interrupt detected, saving model and closing env.")
+        model.save("dqn_cane_model")
+        env.close()
+
 
