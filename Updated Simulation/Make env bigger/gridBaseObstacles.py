@@ -23,8 +23,10 @@ from stable_baselines3 import DQN
 class CaneEnv(gym.Env):
     MAX_TIMESTEPS = 200 # 30 seconds worth of steps
 
+
+
     #MAX_TIMESTEPS = 300  # Set a max limit for each episode
-    def __init__(self):
+    def __init__(self, gui=False):
         super(CaneEnv, self).__init__()
         
         # Connect to PyBullet in GUI mode and set up simulation.
@@ -37,6 +39,12 @@ class CaneEnv(gym.Env):
             p.disconnect()  # ensure clean start
 
         
+        # Choose PyBullet connection mode
+        if gui:
+            self.physics_client = p.connect(p.GUI)
+        else:
+            self.physics_client = p.connect(p.DIRECT)
+
         self.physics_client = p.connect(p.DIRECT)
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         
@@ -482,7 +490,7 @@ class CaneEnv(gym.Env):
                 ]
                 p.resetBasePositionAndOrientation(self.cane_id, escape_pos, orientation)
 
-
+        self.collision_count = 0
 
 
         # if collision_detected:
@@ -616,21 +624,21 @@ class CaneEnv(gym.Env):
         else:
             # penalty for moving away from goal
             reward += (prev_distance_to_goal - distance_to_goal) * 10
-            #print("Test:",reward)
+
             if distance_to_goal > prev_distance_to_goal:
-                reward -= 0.25  # penalty for moving away from the goal
+                reward -= 0.5  # penalty for moving away from the goal
 
         if collision_detected:
-            reward -= 2.0 
+            reward -= 3.0 
 
-        reward -= 0.1 #small time penalty
+        reward -= 0.2 #small time penalty
         
         #considering the angles and turning away from the goal
         # will this still be relevant with my updated angle ?? 
         # should I change it away from absolute angle 
 
-        angle_diff = abs(prev_angle_to_goal) - abs(angle_to_goal)
-        reward += angle_diff * 0.25  # scale as you like
+        angle_diff = prev_angle_to_goal - angle_to_goal
+        reward += angle_diff * 0.2  # scale as you like
 
         #print("Action:", action, "Reward:", reward)
 
@@ -754,6 +762,7 @@ if __name__ == "__main__":
     env=CaneEnv()
     #env = Monitor(env)
 
+    random.seed(1001)
     
     #model = DQN("MlpPolicy",env,verbose=1, exploration_initial_eps=0.8, exploration_final_eps=0.02, exploration_fraction=0.2, )
     model = DQN(
