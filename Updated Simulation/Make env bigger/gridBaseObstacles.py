@@ -778,13 +778,13 @@ if __name__ == "__main__":
         target_update_interval=500,
         exploration_initial_eps=1.0,
         exploration_final_eps=0.05,
-        exploration_fraction=0.2,  # decay over 20% of training
+        exploration_fraction=0.3,  # decay over 20% of training
         gamma=0.95,
     )
 
     #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
 
-    model.learn(total_timesteps=10000 * CaneEnv.MAX_TIMESTEPS)
+    model.learn(total_timesteps=5000 * CaneEnv.MAX_TIMESTEPS)
 
     model.save("dqn_cane_model")
     print("Model saved after training.")

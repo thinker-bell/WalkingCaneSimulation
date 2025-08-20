@@ -18,7 +18,7 @@ env = DummyVecEnv([make_env])  # SB3 expects a vectorized env
 model = DQN.load("dqn_cane_model.zip")
 
 # === 3. Evaluate (both deterministic and exploratory) ===
-print("Greedy (Deterministic):")
+print("Greedy :")
 mean_det, std_det = evaluate_policy(model, env, n_eval_episodes=50, deterministic=True)
 print(f"Mean reward (deterministic): {mean_det}")
 print(f"Standard deviation: {std_det}\n")
