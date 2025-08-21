@@ -115,7 +115,7 @@ class CaneEnv(gym.Env):
         self.safe_steps_count = 0
 
         ############################ GOAL LOCATION ################################
-        self.goal_location = np.array([2.0, -2.0, 1.4])
+        self.goal_location = np.array([2.0, -8.0, 1.4])
         self.goal_visual_id = p.createMultiBody(
             baseMass=0,
             baseCollisionShapeIndex=p.createCollisionShape(
@@ -424,43 +424,6 @@ class CaneEnv(gym.Env):
             new_pos = pos
         else:
             raise ValueError(f"Invalid action: {action}")
-
-
-
-        # # Step 2: Define rotation angles
-        # rotation_angles = {
-        #     2: math.radians(30),   # short left
-        #     3: math.radians(-30),  # short right
-        #     4: math.radians(60),   # medium left
-        #     5: math.radians(-60),  # medium right
-        #     6: math.radians(90),   # hard left
-        #     7: math.radians(-90),  # hard right
-        #     8: math.radians(180)   # turn around
-        # }
-
-        # # Step 3: Compute proposed action
-        # new_pos = np.array(pos)
-        # new_yaw = yaw
-        
-
-        # if isinstance(action, np.ndarray):
-        #     action = action.item()
-
-        # if action == 0:  # Step forward
-        #     new_pos = pos + np.array([
-        #         -step_size * math.sin(yaw),
-        #         step_size * math.cos(yaw),
-        #         0
-        #     ])
-
-        # elif action == 1:  # Stop
-        #     pass  # Keep position and orientation unchanged
-
-        # elif action in rotation_angles:  # Rotate
-        #     new_yaw += rotation_angles[action]
-
-        # else:
-        #     raise ValueError("Invalid action")
 
         # Step 4: Check for collision at proposed pose
         proposed_orientation = p.getQuaternionFromEuler([roll, pitch, new_yaw])
