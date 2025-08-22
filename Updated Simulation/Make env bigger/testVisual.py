@@ -6,7 +6,7 @@ import time
 env = CaneEnv(gui=True)
 
 # Load trained model
-model = DQN.load("dqn_cane_model.zip")
+model = DQN.load("dqn_cane_model_13.zip")
 
 obs, _ = env.reset()
 done = False

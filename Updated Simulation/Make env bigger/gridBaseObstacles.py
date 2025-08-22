@@ -255,14 +255,6 @@ class CaneEnv(gym.Env):
         distance_to_goal = math.hypot(dx, dy)
         angle_to_goal = math.atan2(dy, dx) 
 
-        # adding the subtraction of which direction the cane is facing
-        #goal_angle = math.atan2(dy, dx)
-        #angle_to_goal = goal_angle - cane_yaw
-
-        # Normalize to [-π, π]
-        #angle_to_goal = (angle_to_goal + np.pi) % (2 * np.pi) - np.pi
-
-
         # Add position & direction to goal
         # Updated observation space:
         position_info = [cane_yaw, distance_to_goal, angle_to_goal]
@@ -608,7 +600,8 @@ if __name__ == "__main__":
 
     #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
 
-    model.learn(total_timesteps=10000 * CaneEnv.MAX_TIMESTEPS)
+    #model.learn(total_timesteps=10000 * CaneEnv.MAX_TIMESTEPS)
+    model.learn(total_timesteps=10000)
 
     model.save("dqn_cane_model")
     print("Model saved after training.")
