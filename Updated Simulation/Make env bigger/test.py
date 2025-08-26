@@ -15,7 +15,7 @@ def make_env():
 env = DummyVecEnv([make_env])  # SB3 expects a vectorized env
 
 # === 2. Load the trained model ===
-model = DQN.load("dqn_cane_model.zip")
+model = DQN.load("dqn_cane_model")
 
 # === 3. Evaluate (both deterministic and exploratory) ===
 print("Greedy :")

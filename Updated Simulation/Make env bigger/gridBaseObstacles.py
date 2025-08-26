@@ -253,7 +253,21 @@ class CaneEnv(gym.Env):
         dy = goal_y - cane_y
 
         distance_to_goal = math.hypot(dx, dy)
-        angle_to_goal = math.atan2(dy, dx) 
+        # angle_to_goal = math.atan2(dy, dx) 
+
+        ########### Change the way the angle
+
+        # Absolute angle from cane position to goal
+        goal_angle = math.atan2(dy, dx)
+
+        cane_roll, cane_pitch, cane_yaw = p.getEulerFromQuaternion(cane_orientation)
+
+        # θ = relative angle between cane direction and goal
+        theta = goal_angle - cane_yaw
+
+        # Normalize angle to [-pi, pi]
+        angle_to_goal = (theta + math.pi) % (2 * math.pi) - math.pi
+
 
         # Add position & direction to goal
         # Updated observation space:
@@ -501,14 +515,14 @@ class CaneEnv(gym.Env):
         if goal_location:
             reward += 100.0
         else:
-            # penalty for moving away from goal
-            reward += (prev_distance_to_goal - distance_to_goal) * 10
+            # # penalty for moving away from goal
+            # reward += (prev_distance_to_goal - distance_to_goal) * 10
 
             if distance_to_goal > prev_distance_to_goal:
                 reward -= 0.5  # penalty for moving away from the goal
 
         if collision_detected:
-            reward -= 3.0 
+            reward -= 3
 
         reward -= 0.2 #small time penalty
         
@@ -581,27 +595,46 @@ if __name__ == "__main__":
     random.seed(1001)
     
     #model = DQN("MlpPolicy",env,verbose=1, exploration_initial_eps=0.8, exploration_final_eps=0.02, exploration_fraction=0.2, )
+    # model = DQN(
+    #     "MlpPolicy",
+    #     env,
+    #     verbose=1,
+    #     learning_rate=1e-4, 
+    #     buffer_size=100_000,
+    #     learning_starts=10_000,
+    #     batch_size=64,
+    #     tau=1.0,  # Hard update (DQN default)
+    #     train_freq=4,
+    #     target_update_interval=500,
+    #     exploration_initial_eps=1.0,
+    #     exploration_final_eps=0.05,
+    #     exploration_fraction=0.2,  # decay over 20% of training
+    #     gamma=0.999,
+    # )
+
     model = DQN(
         "MlpPolicy",
         env,
         verbose=1,
-        learning_rate=1e-4, 
+        learning_rate=1e-4,
         buffer_size=100_000,
         learning_starts=10_000,
-        batch_size=64,
-        tau=1.0,  # Hard update (DQN default)
+        batch_size=32,
+        tau=1.0,  # Hard update (standard DQN)
         train_freq=4,
-        target_update_interval=500,
+        target_update_interval=1_000,
         exploration_initial_eps=1.0,
-        exploration_final_eps=0.05,
-        exploration_fraction=0.2,  # decay over 20% of training
-        gamma=0.95,
+        exploration_final_eps=0.01,
+        exploration_fraction=0.1,
+        gamma=0.999,
     )
+
+
 
     #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
 
-    #model.learn(total_timesteps=10000 * CaneEnv.MAX_TIMESTEPS)
-    model.learn(total_timesteps=10000)
+    model.learn(total_timesteps=10000 * CaneEnv.MAX_TIMESTEPS)
+    #model.learn(total_timesteps=10000)
 
     model.save("dqn_cane_model")
     print("Model saved after training.")
