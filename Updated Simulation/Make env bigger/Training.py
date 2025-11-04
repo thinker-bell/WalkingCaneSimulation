@@ -32,20 +32,14 @@ class CaneEnv(gym.Env):
         # Connect to PyBullet in GUI mode and set up simulation.
         #self.physics_client = p.connect(p.GUI)
 
-        # if p.isConnected():
-        #     p.disconnect()
-        
         if p.isConnected():
-            p.disconnect()  # ensure clean start
+            p.disconnect()
 
-        
-        # Choose PyBullet connection mode
         if gui:
             self.physics_client = p.connect(p.GUI)
         else:
             self.physics_client = p.connect(p.DIRECT)
 
-        self.physics_client = p.connect(p.DIRECT)
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         
 
@@ -114,9 +108,24 @@ class CaneEnv(gym.Env):
         self.collision_count = 0
         self.safe_steps_count = 0
 
+        # ############################ GOAL LOCATION ################################
+        # self.goal_location = np.array([0, 0, -10])
+        # self.goal_id = p.createMultiBody(
+        #     baseMass=0,
+        #     baseCollisionShapeIndex=p.createCollisionShape(
+        #         shapeType=p.GEOM_BOX,
+        #         halfExtents=[0.1, 0.1, 0.1]
+        #     ),
+        #     baseVisualShapeIndex=p.createVisualShape(
+        #         shapeType=p.GEOM_BOX,
+        #         halfExtents=[0.1, 0.1, 0.1],
+        #         rgbaColor=[0, 1, 0, 1]  # Green color
+        #     ),
+        #     basePosition=self.goal_location
+        # )
         ############################ GOAL LOCATION ################################
-        self.goal_location = np.array([0, 0, -10])
-        self.goal_visual_id = p.createMultiBody(
+        self.goal_location = np.array([0, 0, -20])
+        self.goal_id = p.createMultiBody(
             baseMass=0,
             baseCollisionShapeIndex=p.createCollisionShape(
                 shapeType=p.GEOM_BOX,
@@ -125,10 +134,12 @@ class CaneEnv(gym.Env):
             baseVisualShapeIndex=p.createVisualShape(
                 shapeType=p.GEOM_BOX,
                 halfExtents=[0.1, 0.1, 0.1],
-                rgbaColor=[0, 1, 0, 1]  # Green color
+                rgbaColor=[0, 1, 0, 1]
             ),
             basePosition=self.goal_location
         )
+
+
 
         # Define the original action space (movement only).
         # 0: Move forward (+Y)
@@ -685,16 +696,40 @@ class CaneEnv(gym.Env):
         )
         p.resetBasePositionAndOrientation(self.cane_id, self.cane_start_pos, initial_orientation)
 
-        ############## Trying to randomize the goal location
-        # Random goal start (re-run every reset)
-        new_goal_pos = self.random_goal_pos(safe_radius=2.0)
-        self.goal_location = np.array(new_goal_pos)
+        # ############## Trying to randomize the goal location
+        # # Random goal start (re-run every reset)
+        # new_goal_pos = self.random_goal_pos(safe_radius=2.0)
+        # self.goal_location = np.array(new_goal_pos)
+
+        # p.resetBasePositionAndOrientation(
+        #     self.goal_visual_id,
+        #     self.goal_location,
+        #     [0, 0, 0, 1]
+        # )
+
+        # new_goal_pos = self.random_goal_pos(safe_radius=2.0)
+        # self.goal_location = np.array(new_goal_pos)
+
+        # p.resetBasePositionAndOrientation(
+        #     self.goal_id,
+        #     self.goal_location,
+        #     [0, 0, 0, 1]
+        # )
+
+        ########################## GOAL LOCATION (IN reset()) ##########################
+        self.goal_location = self.random_starting_pos(
+            obstacles=self.obstacle_positions, #+ [self.cane_start_pos],  # avoid both
+            safe_radius=1.0  # increase if needed
+        )
 
         p.resetBasePositionAndOrientation(
-            self.goal_visual_id,
+            self.goal_id,
             self.goal_location,
             [0, 0, 0, 1]
         )
+
+
+
 
         ####################
 
@@ -752,7 +787,7 @@ if __name__ == "__main__":
     env=CaneEnv()
     #env = Monitor(env)
 
-    random.seed(1001)
+    #random.seed(1001)
     
     #model = DQN("MlpPolicy",env,verbose=1, exploration_initial_eps=0.8, exploration_final_eps=0.02, exploration_fraction=0.2, )
     model = DQN(
