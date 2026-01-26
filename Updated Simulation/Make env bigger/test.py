@@ -4,7 +4,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.evaluation import evaluate_policy
 
-from gridBaseObstacles import CaneEnv  # Your custom environment
+from training2 import CaneEnv  # Your custom environment
 
 # === 1. Create and wrap the environment ===
 def make_env():
@@ -15,7 +15,7 @@ def make_env():
 env = DummyVecEnv([make_env])  # SB3 expects a vectorized env
 
 # === 2. Load the trained model ===
-model = DQN.load("dqn_cane_model")
+model = DQN.load("dqn_cane_model_23")
 
 # === 3. Evaluate (both deterministic and exploratory) ===
 print("Greedy :")
@@ -34,9 +34,21 @@ obs = env.reset()
 done = [False]
 total_reward = 0
 
+
+
+while not done[0]:
+    action, _ = model.predict(obs, deterministic=True)
+    obs, reward, done, info = env.step(action)
+    total_reward += reward[0]
+
+print(f"Total reward from manual episode: {total_reward}")
+
+
+'''
 while not done[0]:
     action, _ = model.predict(obs, deterministic=True)  # Set to False for exploratory behavior
     obs, reward, done, _ = env.step(action)
     total_reward += reward[0]
 
 print(f"Total reward from manual episode: {total_reward}")
+'''
