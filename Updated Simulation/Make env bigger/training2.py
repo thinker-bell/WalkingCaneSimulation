@@ -532,17 +532,8 @@ class CaneEnv(gym.Env):
         reward +=  progress * 2.5
         
         if abs(progress) < 0.001:
-            reward -= 0.2
+            reward -= 0.5
         
-        #reward -= abs(angle_to_goal) * 0.5
-
-        #angle_progress = abs(prev_angle_to_goal) - abs(angle_to_goal)
-        #reward += angle_progress * 0.3
-
-        #if action in [0, 1, 2] and progress > 0:
-        #    angle_progress = abs(prev_angle_to_goal) - abs(angle_to_goal)
-        #    reward += angle_progress * 0.3
-
         angle_diff = angle_to_goal  # signed, not abs
         reward += math.cos(angle_diff) * 2.0  
 
@@ -550,10 +541,21 @@ class CaneEnv(gym.Env):
         if collision_detected:
             reward -= 5.0 
 
-        reward -= 0.3
+        reward -= 0.8
  
         
         return reward
+
+    #reward -= abs(angle_to_goal) * 0.5
+
+    #angle_progress = abs(prev_angle_to_goal) - abs(angle_to_goal)
+    #reward += angle_progress * 0.3
+
+    #if action in [0, 1, 2] and progress > 0:
+    #    angle_progress = abs(prev_angle_to_goal) - abs(angle_to_goal)
+    #    reward += angle_progress * 0.3
+
+
 
     #if distance_to_goal < 0.7:  # small threshold around the goal
         #    angle_to_goal = 0.0
@@ -646,7 +648,7 @@ def make_env():
     Helper function to create a monitored environment for parallel processing.
     """
     env = CaneEnv(gui=False)  # GUI must be False for parallel workers
-    env = Monitor(env, filename=f"{log_dir}/cane_23")
+    env = Monitor(env, filename=f"{log_dir}/cane_26")
     return env
 
 if __name__ == "__main__":
@@ -684,7 +686,7 @@ if __name__ == "__main__":
 
     model.learn(total_timesteps=9000 * CaneEnv.MAX_TIMESTEPS)
 
-    model.save("dqn_cane_model_23")
+    model.save("dqn_cane_model_26")
     print("Model saved after training.")
 
 

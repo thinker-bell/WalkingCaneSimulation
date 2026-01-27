@@ -6,7 +6,7 @@ import time
 env = CaneEnv(gui=True)
 
 # === 2. Load trained model ===
-model = DQN.load("dqn_cane_model_23")
+model = DQN.load("dqn_cane_model_25")
 
 # === 3. Reset environment ===
 obs, info = env.reset()
@@ -29,7 +29,7 @@ while not done:
     step_count += 1
 
     # Slow down for visual clarity
-    time.sleep(5/60)
+    #time.sleep(5/60)
 
 print(f"Episode finished in {step_count} steps")
 print(f"Cumulative reward: {total_reward}")
