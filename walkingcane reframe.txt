@@ -1,0 +1,23 @@
+This paper studies RL under constrained sensing, using a smart cane setup. 
+
+RL + Partial observability problem.  
+Assistive navigation is motivation and not focus. 
+
+Problem -> method -> Insight
+
+
+instead of:
+We developed a smart cane system -> We investigate RL under sequential sensing constraints
+
+Discussing -> PPO performs better because --- Under constrained sensing. 
+
+Add 3 new contribution bullets: 
+- Model navigaion as RL problem
+- New simulated enviroment with Angluar Lidar aquision
+- ANaluze how DQN and PPO behave under partial observability
+
+Smart cane system -> constrained sensing setting
+assist visually impaired users -> motivated by assistive navigation
+
+Reinforcement learning has through research proved to be a promising 
+

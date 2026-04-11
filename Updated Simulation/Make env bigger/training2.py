@@ -10,11 +10,28 @@ from collections import deque
 from stable_baselines3 import DQN
 #from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.callbacks import BaseCallback
 import os
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 
 log_dir = "./logs"
 os.makedirs(log_dir, exist_ok=True)
+
+
+class CaneCallback(BaseCallback):
+    def _on_step(self) -> bool:
+        infos = self.locals.get("infos", [])
+
+        for info in infos:
+            if "episode" in info:
+                ep = info["episode"]
+
+                if "episode" in info:
+                    self.logger.record("custom/ep_collisions", info["episode"].get("collisions", 0))
+                self.logger.record("custom/ep_reward", ep["r"])
+                self.logger.record("custom/ep_length", ep["l"])
+
+        return True
 
 class CaneEnv(gym.Env):
     MAX_TIMESTEPS = 200 # 30 seconds worth of steps
@@ -38,6 +55,8 @@ class CaneEnv(gym.Env):
 
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         
+        self.episode_collisions = 0
+        self.episode_success = 0
 
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.resetSimulation()
@@ -93,7 +112,7 @@ class CaneEnv(gym.Env):
                                             basePosition=base_pos,
                                             baseOrientation=initial_orientation,
                                             baseInertialFramePosition=inertial_pos) 
-        self.cane_id = 1  # Add this line
+        #self.cane_id = 1  # Add this line
          
         self.lidar_start_pos = [0, 0, self.cane_height / 8]
         self.cumulative_reward = 0.0
@@ -344,144 +363,347 @@ class CaneEnv(gym.Env):
 
         return lidar1_value, lidar2_value
 
+    # def step(self, action):
+
+    #     if isinstance(action, np.ndarray):
+    #         action = int(action.item())  # Convert numpy array to plain int
+
+
+    #     # Step 1: Get observation and current state
+    #     #observation, collision, angle_to_goal = self.get_observation_with_swing()
+        
+    #     #collision_detected = collision
+    #     pos, orientation = p.getBasePositionAndOrientation(self.cane_id)
+    #     pos = np.array(pos)
+    #     roll, pitch, yaw = p.getEulerFromQuaternion(orientation)
+    #     step_size = 0.5
+    #     self.last_cane_position, self.last_cane_orientation = p.getBasePositionAndOrientation(self.cane_id)
+
+    #     # Example: extend action space
+    #     # 0 = small forward, 1 = medium forward, 2 = big forward,
+    #     # 3 = stop, 4–10 = turns
+        
+    #     self.action_space = spaces.Discrete(11)
+
+
+
+    #     step_sizes = {
+    #         0: 0.3,   # small forward
+    #         1: 0.6,   # medium forward
+    #         2: 1.0    # big forward
+    #     }
+
+    #     rotation_angles = {
+    #         4: math.radians(30),   # short left
+    #         5: math.radians(-30),  # short right
+    #         6: math.radians(60),   # medium left
+    #         7: math.radians(-60),  # medium right
+    #         8: math.radians(90),   # hard left
+    #         9: math.radians(-90),  # hard right
+    #         10: math.radians(180)  # turn around
+    #     }
+
+    #     # In step():
+
+    #     new_yaw = yaw
+    #     if action in step_sizes:
+    #         step_size = step_sizes[action]
+    #         new_pos = pos + np.array([
+    #             -step_size * math.sin(yaw),
+    #             step_size * math.cos(yaw),
+    #             0
+    #         ])
+    #     elif action == 3:  # stop
+    #         new_pos = pos
+    #     elif action in rotation_angles:
+    #         new_yaw = yaw + rotation_angles[action]
+    #         proposed_orientation = p.getQuaternionFromEuler([roll, pitch, new_yaw])
+    #         # Keep same position, just rotate
+    #         new_pos = pos
+    #     else:
+    #         raise ValueError(f"Invalid action: {action}")
+
+    #     # new placement for test nr 21
+    #     observation, collision, angle_to_goal = self.get_observation_with_swing()
+    #     #collision_detected = collision
+
+    #     # Step 4: Check for collision at proposed pose
+    #     proposed_orientation = p.getQuaternionFromEuler([roll, pitch, new_yaw])
+    #     # p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), proposed_orientation)
+    #     # contacts = p.getContactPoints(bodyA=self.cane_id)
+    #     # #collision_detected = any(contact[8] < 0.01 for contact in contacts)
+    #     # collision_detected = len(contacts) > 0
+
+    #     p.resetBasePositionAndOrientation(self.cane_id, new_pos, proposed_orientation)
+
+    #     contacts = p.getContactPoints(bodyA=self.cane_id)
+    #     collision_detected = len(contacts) > 0  
+    #     collision_detected = True
+    #     self.last_collision = collision_detected
+
+    #     if collision_detected:
+    #         self.episode_collisions += 1
+    #         self.collision_count += 1
+    #         # Push the cane slightly backwards along its facing direction
+    #         if self.collision_count >= 4:
+    #             # Too many collisions – reset to last safe pos
+    #             p.resetBasePositionAndOrientation(self.cane_id, self.last_safe_pos, self.last_safe_orientation)
+    #             self.collision_count = 0  # Reset tracker
+    #         else:
+    #             backoff_distance = 0.3
+    #             backoff_vector = [
+    #                 backoff_distance * math.sin(yaw),
+    #                 -backoff_distance * math.cos(yaw),
+    #                 0
+    #             ]
+    #             escape_pos = [
+    #                 pos[0] + backoff_vector[0],
+    #                 pos[1] + backoff_vector[1],
+    #                 (self.cane_height / 2) * math.cos(math.radians(45)) + 0.75
+    #             ]
+    #             p.resetBasePositionAndOrientation(self.cane_id, escape_pos, orientation)
+
+    #             self.collision_count = 0
+
+
+    #     # Step 6: Check if goal reached
+    #     #distance_to_goal = np.linalg.norm(new_pos - self.goal_location)
+        
+    #     pos, _ = p.getBasePositionAndOrientation(self.cane_id)
+    #     pos = np.array(pos)
+    #     distance_to_goal = np.linalg.norm(pos - self.goal_location)
+       
+
+    #     '''
+    #     if distance_to_goal < 0.5:
+    #         p.resetBaseVelocity(self.cane_id, [0, 0, 0], [0, 0, 0])
+    #         #print("Location Reached! Stopping the cane.")
+    #         goal_location = True
+    #         return observation, 100, True, False, {
+    #             "goal_reached": True,
+    #             "collision": collision_detected,
+    #             "steps_taken": self.current_timestep,
+    #             "reward": 100
+    #         }
+    #     '''
+    #     goal_location = False
+    #     done = False
+    #     terminated = False
+
+    #     #observation, collision, angle_to_goal = self.get_observation_with_swing()
+
+    #     if distance_to_goal < 0.5:  # within goal radius
+    #         goal_location = True
+    #         terminated = True       # stop episode immediately
+    #         truncated = False       # not truncated
+    #         reward = 100            # give final reward for reaching goal
+    #         self.cumulative_reward += reward
+    #         self.current_timestep += 1
+    #         info = {
+    #             "goal_reached": bool(goal_location),
+    #             "collision_detected": bool(collision_detected),
+    #             "steps_taken": int(self.current_timestep),
+    #             "cumulative_reward": float(self.cumulative_reward)
+    #         }
+    #         return observation, reward, terminated, truncated, info  # exit immediately
+
+    #     #observation, collision, angle_to_goal = self.get_observation_with_swing()
+
+    #     # Step 7: Compute reward
+    #     reward = self.compute_reward(
+    #         goal_location,
+    #         distance_to_goal,
+    #         self.prev_distance_to_goal,
+    #         collision_detected,
+    #         angle_to_goal,
+    #         self.prev_angle_to_goal,
+    #         action
+    #     )
+
+        
+
+    #     # Step 8: Prepare info and check episode done
+    #     self.current_timestep += 1
+    #     truncated = self.current_timestep >= CaneEnv.MAX_TIMESTEPS
+    #     self.cumulative_reward += reward
+
+    #     if not terminated and not truncated:
+    #         self.prev_distance_to_goal = distance_to_goal
+    #         self.prev_angle_to_goal = angle_to_goal
+            
+        
+
+    #     info = {
+    #         "goal_reached": bool(goal_location),
+    #         "collision_detected": bool(collision_detected),
+    #         "steps_taken": int(self.current_timestep),
+    #         "cumulative_reward": float(self.cumulative_reward)
+    #     }
+        
+    #     info["episode"] = {
+    #             "r": float(self.cumulative_reward),
+    #             "l": int(self.current_timestep),
+    #             "collisions": int(self.episode_collisions)
+    #     }
+
+    #     if terminated or truncated:
+    #         info["episode"] = {
+    #             "r": float(self.cumulative_reward),
+    #             "l": int(self.current_timestep),
+    #             "collisions": int(self.episode_collisions)
+    #         }
+    #     #print(info)
+    #     #print(observation)
+        
+
     def step(self, action):
 
         if isinstance(action, np.ndarray):
-            action = int(action.item())  # Convert numpy array to plain int
+            action = int(action.item())
 
-
-        # Step 1: Get observation and current state
-        observation, collision, angle_to_goal = self.get_observation_with_swing()
-        
-        collision_detected = collision
+        # =========================
+        # 1. Current state
+        # =========================
         pos, orientation = p.getBasePositionAndOrientation(self.cane_id)
         pos = np.array(pos)
         roll, pitch, yaw = p.getEulerFromQuaternion(orientation)
-        step_size = 0.5
-        self.last_cane_position, self.last_cane_orientation = p.getBasePositionAndOrientation(self.cane_id)
 
-        # Example: extend action space
-        # 0 = small forward, 1 = medium forward, 2 = big forward,
-        # 3 = stop, 4–10 = turns
-        
-        self.action_space = spaces.Discrete(11)
+        self.last_cane_position = pos.copy()
+        self.last_cane_orientation = orientation
 
-
-
+        # =========================
+        # 2. Action model
+        # =========================
         step_sizes = {
-            0: 0.3,   # small forward
-            1: 0.6,   # medium forward
-            2: 1.0    # big forward
+            0: 0.3,
+            1: 0.6,
+            2: 1.0
         }
 
         rotation_angles = {
-            4: math.radians(30),   # short left
-            5: math.radians(-30),  # short right
-            6: math.radians(60),   # medium left
-            7: math.radians(-60),  # medium right
-            8: math.radians(90),   # hard left
-            9: math.radians(-90),  # hard right
-            10: math.radians(180)  # turn around
+            4: math.radians(30),
+            5: math.radians(-30),
+            6: math.radians(60),
+            7: math.radians(-60),
+            8: math.radians(90),
+            9: math.radians(-90),
+            10: math.radians(180)
         }
 
-        # In step():
-
         new_yaw = yaw
+        new_pos = pos.copy()
+
         if action in step_sizes:
-            step_size = step_sizes[action]
+            s = step_sizes[action]
             new_pos = pos + np.array([
-                -step_size * math.sin(yaw),
-                step_size * math.cos(yaw),
+                -s * math.sin(yaw),
+                s * math.cos(yaw),
                 0
             ])
-        elif action == 3:  # stop
+
+        elif action == 3:
             new_pos = pos
+
         elif action in rotation_angles:
             new_yaw = yaw + rotation_angles[action]
-            proposed_orientation = p.getQuaternionFromEuler([roll, pitch, new_yaw])
-            # Keep same position, just rotate
-            new_pos = pos
+
         else:
             raise ValueError(f"Invalid action: {action}")
 
-        # new placement for test nr 21
-        observation, collision, angle_to_goal = self.get_observation_with_swing()
-        collision_detected = collision
+        new_orientation = p.getQuaternionFromEuler([roll, pitch, new_yaw])
 
-        # Step 4: Check for collision at proposed pose
-        proposed_orientation = p.getQuaternionFromEuler([roll, pitch, new_yaw])
-        p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), proposed_orientation)
+        # =========================
+        # 3. APPLY MOVE
+        # =========================
+        p.resetBasePositionAndOrientation(
+            self.cane_id,
+            new_pos.tolist(),
+            new_orientation
+        )
+
+        # let physics update (IMPORTANT for reliable contacts)
+        p.stepSimulation()
+
+        # =========================
+        # 4. COLLISION DETECTION (OPTION A CORRECT WAY)
+        # =========================
         contacts = p.getContactPoints(bodyA=self.cane_id)
-        collision_detected = any(contact[8] < 0.01 for contact in contacts)
+        collision_detected = len(contacts) > 0
 
+        self.last_collision = collision_detected
+
+        # track episode stats
         if collision_detected:
+            self.episode_collisions += 1
             self.collision_count += 1
-            # Push the cane slightly backwards along its facing direction
+        else:
+            self.collision_count = 0
+
+        # =========================
+        # 5. Collision handling
+        # =========================
+        if collision_detected:
             if self.collision_count >= 4:
-                # Too many collisions – reset to last safe pos
-                p.resetBasePositionAndOrientation(self.cane_id, self.last_safe_pos, self.last_safe_orientation)
-                self.collision_count = 0  # Reset tracker
-            else:
-                backoff_distance = 0.3
-                backoff_vector = [
-                    backoff_distance * math.sin(yaw),
-                    -backoff_distance * math.cos(yaw),
-                    0
-                ]
-                escape_pos = [
-                    pos[0] + backoff_vector[0],
-                    pos[1] + backoff_vector[1],
-                    (self.cane_height / 2) * math.cos(math.radians(45)) + 0.75
-                ]
-                p.resetBasePositionAndOrientation(self.cane_id, escape_pos, orientation)
-
+                p.resetBasePositionAndOrientation(
+                    self.cane_id,
+                    self.last_safe_pos,
+                    self.last_safe_orientation
+                )
                 self.collision_count = 0
+            else:
+                backoff = 0.3
+                escape_pos = pos + np.array([
+                    backoff * math.sin(yaw),
+                    -backoff * math.cos(yaw),
+                    0
+                ])
 
+                p.resetBasePositionAndOrientation(
+                    self.cane_id,
+                    escape_pos.tolist(),
+                    orientation
+                )
 
-        # Step 6: Check if goal reached
-        #distance_to_goal = np.linalg.norm(new_pos - self.goal_location)
-        
+        else:
+            # update safe state ONLY if no collision
+            self.last_safe_pos = new_pos.copy()
+            self.last_safe_orientation = new_orientation
+
+        # =========================
+        # 6. OBSERVATION (IMPORTANT: AFTER MOVE)
+        # =========================
+        observation, _, angle_to_goal = self.get_observation_with_swing()
+
+        # =========================
+        # 7. Goal check
+        # =========================
         pos, _ = p.getBasePositionAndOrientation(self.cane_id)
         pos = np.array(pos)
+
         distance_to_goal = np.linalg.norm(pos - self.goal_location)
-       
 
-        '''
-        if distance_to_goal < 0.5:
-            p.resetBaseVelocity(self.cane_id, [0, 0, 0], [0, 0, 0])
-            #print("Location Reached! Stopping the cane.")
-            goal_location = True
-            return observation, 100, True, False, {
-                "goal_reached": True,
-                "collision": collision_detected,
-                "steps_taken": self.current_timestep,
-                "reward": 100
-            }
-        '''
-        goal_location = False
-        done = False
         terminated = False
+        truncated = False
+        reward = 0.0
+        goal_location = False
 
-        #observation, collision, angle_to_goal = self.get_observation_with_swing()
-
-        if distance_to_goal < 0.5:  # within goal radius
+        if distance_to_goal < 0.5:
+            terminated = True
             goal_location = True
-            terminated = True       # stop episode immediately
-            truncated = False       # not truncated
-            reward = 100            # give final reward for reaching goal
-            self.cumulative_reward += reward
-            self.current_timestep += 1
+            reward = 100
+
             info = {
                 "goal_reached": True,
                 "collision_detected": collision_detected,
                 "steps_taken": self.current_timestep,
-                "cumulative reward": self.cumulative_reward
+                "cumulative_reward": self.cumulative_reward
             }
-            return observation, reward, terminated, truncated, info  # exit immediately
 
-        #observation, collision, angle_to_goal = self.get_observation_with_swing()
+            return observation, reward, terminated, truncated, info
 
-        # Step 7: Compute reward
+        # =========================
+        # 8. Reward
+        # =========================
         reward = self.compute_reward(
             goal_location,
             distance_to_goal,
@@ -492,32 +714,39 @@ class CaneEnv(gym.Env):
             action
         )
 
-        
+        # small time penalty
+        reward -= 0.75
 
-        # Step 8: Prepare info and check episode done
+        # =========================
+        # 9. Update state
+        # =========================
         self.current_timestep += 1
         truncated = self.current_timestep >= CaneEnv.MAX_TIMESTEPS
+
         self.cumulative_reward += reward
 
-        if not terminated and not truncated:
-            self.prev_distance_to_goal = distance_to_goal
-            self.prev_angle_to_goal = angle_to_goal
+        self.prev_distance_to_goal = distance_to_goal
+        self.prev_angle_to_goal = angle_to_goal
 
+        # =========================
+        # 10. Info
+        # =========================
         info = {
             "goal_reached": goal_location,
             "collision_detected": collision_detected,
-            "steps_taken": self.current_timestep,
-            #"reward": reward,
-            "cumulative reward": self.cumulative_reward
+            "steps_taken": int(self.current_timestep),
+            "cumulative_reward": float(self.cumulative_reward)
         }
 
-        #print(info)
-        #print(observation)
-        
+        info["episode"] = {
+            "r": float(self.cumulative_reward),
+            "l": int(self.current_timestep),
+            "collisions": int(self.episode_collisions)
+        }
 
-        
+        return observation, reward, terminated, truncated, info   
 
-        return observation, reward,terminated, truncated, info
+    #     return observation, reward,terminated, truncated, info
     
     def compute_reward(self, goal_location, distance_to_goal, prev_distance_to_goal, collision_detected,angle_to_goal,prev_angle_to_goal,action):
         reward = 0.0
@@ -527,6 +756,7 @@ class CaneEnv(gym.Env):
         
         if distance_to_goal < 0.5:  # small threshold around the goal
             angle_to_goal = 0.0
+            self.episode_success = 1
         
         progress = (prev_distance_to_goal - distance_to_goal)
         reward +=  progress * 2.5
@@ -539,9 +769,9 @@ class CaneEnv(gym.Env):
 
 
         if collision_detected:
-            reward -= 5.0 
+            reward -= 5
 
-        reward -= 0.8
+        reward -= 0.75
  
         
         return reward
@@ -593,6 +823,8 @@ class CaneEnv(gym.Env):
         if not p.isConnected():
             self.physics_client = p.connect(p.DIRECT)
 
+        self.episode_collisions = 0
+        self.episode_success = 0
         self.current_timestep = 0
         self.cumulative_reward = 0.0 
         self.current_swing_deg = 0
@@ -648,7 +880,7 @@ def make_env():
     Helper function to create a monitored environment for parallel processing.
     """
     env = CaneEnv(gui=False)  # GUI must be False for parallel workers
-    env = Monitor(env, filename=f"{log_dir}/cane_26")
+    env = Monitor(env) #, filename=f"{log_dir}/cane_26")
     return env
 
 if __name__ == "__main__":
@@ -657,7 +889,7 @@ if __name__ == "__main__":
     num_cpu = 8 
     #vec_env = SubprocVecEnv([CaneEnv for _ in range(num_cpu)])
 
-    vec_env = SubprocVecEnv([make_env for _ in range(num_cpu)])
+    vec_env = DummyVecEnv([make_env for _ in range(num_cpu)])
 
     #env = Monitor(env, filename=f"{log_dir}/cane_monitor_02.csv")
     #env = Monitor(env)
@@ -665,30 +897,59 @@ if __name__ == "__main__":
     #random.seed(1001)
     
     #model = DQN("MlpPolicy",env,verbose=1, exploration_initial_eps=0.8, exploration_final_eps=0.02, exploration_fraction=0.2, )
+    # model = DQN(
+    #     "MlpPolicy",
+    #     vec_env,
+    #     verbose=1,
+    #     learning_rate=1e-4, 
+    #     buffer_size=100_000,
+    #     learning_starts=50_000,
+    #     batch_size=64,
+    #     tau=1.0,  # Hard update (DQN default)
+    #     train_freq=4,
+    #     target_update_interval=500,
+    #     exploration_initial_eps=1.0,
+    #     exploration_final_eps=0.05,
+    #     exploration_fraction=0.2,  # decay over 20% of training
+    #     gamma=0.95,
+    #     tensorboard_log="./tensorboard/",
+    #     device="auto"
+    # )
+    
     model = DQN(
         "MlpPolicy",
         vec_env,
         verbose=1,
-        learning_rate=1e-4, 
-        buffer_size=100_000,
-        learning_starts=50_000,
-        batch_size=64,
-        tau=1.0,  # Hard update (DQN default)
+
+        learning_rate=5e-5,   # ↓ more stable than 1e-4
+        buffer_size=500_000,  # ↑ important for navigation tasks
+        learning_starts=10_000,  # ↑ prevents early bad Q-overfit
+
+        batch_size=128,       # ↑ smoother gradients
+
+        gamma=0.99,           # ↑ long-term planning (VERY important for navigation)
+
         train_freq=4,
-        target_update_interval=500,
+        gradient_steps=1,
+
+        target_update_interval=2000,  # ↑ prevents Q oscillation
+
         exploration_initial_eps=1.0,
         exploration_final_eps=0.05,
-        exploration_fraction=0.2,  # decay over 20% of training
-        gamma=0.95,
+        exploration_fraction=0.3,
+
+        tensorboard_log="./tensorboard/",
+        device="auto"
     )
 
+
     #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
+    callback = CaneCallback()
 
-    model.learn(total_timesteps=9000 * CaneEnv.MAX_TIMESTEPS)
+    model.learn(total_timesteps=9000 * CaneEnv.MAX_TIMESTEPS,callback=callback)
 
-    model.save("dqn_cane_model_26")
+    model.save("mlp_cane_model_26")
     print("Model saved after training.")
-
 
     
     '''

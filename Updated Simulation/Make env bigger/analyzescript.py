@@ -8,7 +8,7 @@ from training2 import CaneEnv
 # =========================
 # Configuration
 # =========================
-MODEL_PATH = "dqn_cane_model_01.zip"
+MODEL_PATH = "dqn_cane_model_25.zip"
 N_EPISODES = 100  # number of episodes to evaluate
 GUI = False      # Set True if you want to visually watch
 
