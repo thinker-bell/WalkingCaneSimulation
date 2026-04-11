@@ -7,8 +7,8 @@ import random
 import math
 from gymnasium import spaces
 from collections import deque
-from stable_baselines3 import DQN
-#from stable_baselines3 import PPO
+#from stable_baselines3 import DQN
+from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 import os
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
@@ -364,7 +364,7 @@ class CaneEnv(gym.Env):
         # 0 = small forward, 1 = medium forward, 2 = big forward,
         # 3 = stop, 4–10 = turns
         
-        self.action_space = spaces.Discrete(11)
+        #self.action_space = spaces.Discrete(11)
 
 
 
@@ -405,13 +405,15 @@ class CaneEnv(gym.Env):
             raise ValueError(f"Invalid action: {action}")
 
         # new placement for test nr 21
-        observation, collision, angle_to_goal = self.get_observation_with_swing()
-        collision_detected = collision
+        #observation, collision, angle_to_goal = self.get_observation_with_swing()
+        #collision_detected = collision
 
         # Step 4: Check for collision at proposed pose
         proposed_orientation = p.getQuaternionFromEuler([roll, pitch, new_yaw])
         p.resetBasePositionAndOrientation(self.cane_id, new_pos.tolist(), proposed_orientation)
         contacts = p.getContactPoints(bodyA=self.cane_id)
+        
+        #observation, collision, angle_to_goal = self.get_observation_with_swing()
         collision_detected = any(contact[8] < 0.01 for contact in contacts)
 
         if collision_detected:
@@ -437,6 +439,7 @@ class CaneEnv(gym.Env):
 
                 self.collision_count = 0
 
+        observation, collision, angle_to_goal = self.get_observation_with_swing()
 
         # Step 6: Check if goal reached
         #distance_to_goal = np.linalg.norm(new_pos - self.goal_location)
@@ -522,50 +525,21 @@ class CaneEnv(gym.Env):
     def compute_reward(self, goal_location, distance_to_goal, prev_distance_to_goal, collision_detected,angle_to_goal,prev_angle_to_goal,action):
         reward = 0.0
 
-        GOAL_RADIUS = 0.5
-
-        if distance_to_goal < GOAL_RADIUS:
-            return 100.0
-
-        progress = prev_distance_to_goal - distance_to_goal
-        reward += np.clip(progress * 5.0, -2.0, 5.0)
-
-        if progress < 0.005:
-            reward -= 0.3
+        if goal_location:
+            return 100
         
-        if distance_to_goal > 2.0:
-            reward += 0.5 * math.cos(angle_to_goal)
-
-        if distance_to_goal < 1.0:
-            reward += 1.0
-
-        #if abs(progress) < 0.001:
-        #    reward -=1
-
+        if distance_to_goal > prev_distance_to_goal:
+                reward -= 0.5
+        
         if collision_detected:
-            reward -= 8.0
+            reward -= 3 
+
+        reward -= 1
+
 
         return reward
 
-    #reward -= abs(angle_to_goal) * 0.5
 
-    #angle_progress = abs(prev_angle_to_goal) - abs(angle_to_goal)
-    #reward += angle_progress * 0.3
-
-    #if action in [0, 1, 2] and progress > 0:
-    #    angle_progress = abs(prev_angle_to_goal) - abs(angle_to_goal)
-    #    reward += angle_progress * 0.3
-
-
-
-    #if distance_to_goal < 0.7:  # small threshold around the goal
-        #    angle_to_goal = 0.0
-
-        #if distance_to_goal > prev_distance_to_goal:
-        #        reward -= 0.5
-        
-        #angle_diff = prev_angle_to_goal - angle_to_goal
-        #reward += angle_diff * 0.2
 
     def random_starting_pos(self,obstacles, safe_radius=1.0):
         bounds = (-10, 10)
@@ -632,8 +606,11 @@ class CaneEnv(gym.Env):
         self.prev_distance_to_goal = np.linalg.norm(np.array(pos) - self.goal_location)
         self.prev_angle_to_goal = 0
 
-        obs = np.zeros(23, dtype=np.float32)
-        return obs, {}
+        obs, _, _ = self.get_observation_with_swing()
+        return obs.astype(np.float32), {}
+        
+        #obs = np.zeros(23, dtype=np.float32)
+        #return obs.astype(np.float32), {} #obs, {}
 
     
     def render(self, mode="human"):
@@ -649,24 +626,24 @@ def make_env():
     Helper function to create a monitored environment for parallel processing.
     """
     env = CaneEnv(gui=False)  # GUI must be False for parallel workers
-    env = Monitor(env, filename=f"{log_dir}/cane_50")
+    env = Monitor(env, filename=f"{log_dir}/cane_03")
     return env
 
 if __name__ == "__main__":
     #env=CaneEnv()
 
     num_cpu = 8 
-    #vec_env = SubprocVecEnv([CaneEnv for _ in range(num_cpu)])
+    #num_envs = 1
+    #vec_env = DummyVecEnv([make_env])
 
-    vec_env = SubprocVecEnv([make_env for _ in range(num_cpu)])
-
+    vec_env = SubprocVecEnv([CaneEnv for _ in range(num_cpu)])
+    #vec_env = SubprocVecEnv([make_env for _ in range(num_cpu)])
     #env = Monitor(env, filename=f"{log_dir}/cane_monitor_02.csv")
     #env = Monitor(env)
-
     #random.seed(1001)
-    
     #model = DQN("MlpPolicy",env,verbose=1, exploration_initial_eps=0.8, exploration_final_eps=0.02, exploration_fraction=0.2, )
-    model = DQN(
+    '''
+    model = PPO(
         "MlpPolicy",
         vec_env,
         verbose=1,
@@ -682,12 +659,26 @@ if __name__ == "__main__":
         exploration_fraction=0.2,  # decay over 20% of training
         gamma=0.95,
     )
-
+    '''
+    model = PPO(
+        "MlpPolicy",
+        vec_env,
+        learning_rate=3e-4,
+        #n_steps=2048,          # IMPORTANT for PPO
+        n_steps=256,
+        batch_size=64,
+        n_epochs=10,
+        gamma=0.99,
+        gae_lambda=0.95,
+        clip_range=0.2,
+        ent_coef=0.01,         # encourages exploration
+        verbose=1,
+    )
     #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
 
     model.learn(total_timesteps=9000 * CaneEnv.MAX_TIMESTEPS)
 
-    model.save("dqn_cane_model_50")
+    model.save("ppo_cane_model_03")
     print("Model saved after training.")
 
 
