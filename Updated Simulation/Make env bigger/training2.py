@@ -688,9 +688,15 @@ class CaneEnv(gym.Env):
         goal_location = False
 
         if distance_to_goal < 0.5:
+            
+            reward = 1000
+
+            self.cumulative_reward += reward
+            self.episode_success = 1
             terminated = True
             goal_location = True
-            reward = 100
+            print("Goal Reached")
+            
 
             info = {
                 "goal_reached": True,
@@ -715,7 +721,7 @@ class CaneEnv(gym.Env):
         )
 
         # small time penalty
-        reward -= 0.75
+        #reward -= 0.75
 
         # =========================
         # 9. Update state
@@ -741,7 +747,9 @@ class CaneEnv(gym.Env):
         info["episode"] = {
             "r": float(self.cumulative_reward),
             "l": int(self.current_timestep),
-            "collisions": int(self.episode_collisions)
+            "collisions": int(self.episode_collisions),
+            "success": int(self.episode_success)
+            
         }
 
         return observation, reward, terminated, truncated, info   
@@ -751,27 +759,30 @@ class CaneEnv(gym.Env):
     def compute_reward(self, goal_location, distance_to_goal, prev_distance_to_goal, collision_detected,angle_to_goal,prev_angle_to_goal,action):
         reward = 0.0
 
-        if goal_location:
-            return 100
+        # if goal_location:
+        #     print("Goal Reached")
+        #     return 2000
         
-        if distance_to_goal < 0.5:  # small threshold around the goal
-            angle_to_goal = 0.0
-            self.episode_success = 1
+        # if distance_to_goal < 0.5:  # small threshold around the goal
+        #     #angle_to_goal = 0.0
+        #     self.episode_success = 1000
         
-        progress = (prev_distance_to_goal - distance_to_goal)
-        reward +=  progress * 2.5
+        # progress = (prev_distance_to_goal - distance_to_goal)
+        # reward +=  progress * 5
         
-        if abs(progress) < 0.001:
-            reward -= 0.5
+        # if abs(progress) < 0.001:
+        #     reward -= 0.1
         
-        angle_diff = angle_to_goal  # signed, not abs
-        reward += math.cos(angle_diff) * 2.0  
+        # reward += math.cos(angle_to_goal) * 0.3
+
+        # # angle_diff = angle_to_goal  # signed, not abs
+        # # reward += math.cos(angle_diff) * 0.5  
 
 
-        if collision_detected:
-            reward -= 5
+        # if collision_detected:
+        #     reward -= 2
 
-        reward -= 0.75
+        # reward -= 0.05
  
         
         return reward
@@ -864,6 +875,9 @@ class CaneEnv(gym.Env):
         self.prev_angle_to_goal = 0
 
         obs = np.zeros(23, dtype=np.float32)
+
+        self.done = False
+
         return obs, {}
 
     
