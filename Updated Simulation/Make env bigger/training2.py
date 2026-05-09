@@ -21,6 +21,7 @@ os.makedirs(log_dir, exist_ok=True)
 class CaneCallback(BaseCallback):
     def _on_step(self) -> bool:
         infos = self.locals.get("infos", [])
+        self.global_successes = 0
 
         for info in infos:
             if "episode" in info:
@@ -30,6 +31,11 @@ class CaneCallback(BaseCallback):
                     self.logger.record("custom/ep_collisions", info["episode"].get("collisions", 0))
                 self.logger.record("custom/ep_reward", ep["r"])
                 self.logger.record("custom/ep_length", ep["l"])
+                self.logger.record("custom/total_successes", info.get("total_successes", 0))
+                if info.get("goal_reached", False):
+                    self.global_successes += 1
+
+                    self.logger.record("custom/global_successes",self.global_successes)
 
         return True
 
@@ -57,6 +63,7 @@ class CaneEnv(gym.Env):
         
         self.episode_collisions = 0
         self.episode_success = 0
+        self.total_successes = 0
 
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.resetSimulation()
@@ -497,12 +504,13 @@ class CaneEnv(gym.Env):
 
         if distance_to_goal < 0.5:
             
-            reward = 1000
-
+            reward = 100
+            self.total_successes += 1
             self.cumulative_reward += reward
             self.episode_success = 1
             terminated = True
             goal_location = True
+            print(self.total_successes)
             print("Goal Reached")
             
 
@@ -510,7 +518,8 @@ class CaneEnv(gym.Env):
                 "goal_reached": True,
                 "collision_detected": collision_detected,
                 "steps_taken": self.current_timestep,
-                "cumulative_reward": self.cumulative_reward
+                "cumulative_reward": self.cumulative_reward,
+                "total_successes": self.total_successes
             }
 
             return observation, reward, terminated, truncated, info
@@ -571,29 +580,38 @@ class CaneEnv(gym.Env):
         #     print("Goal Reached")
         #     return 2000
         
-        # if distance_to_goal < 0.5:  # small threshold around the goal
-        #     #angle_to_goal = 0.0
-        #     self.episode_success = 1000
+        if distance_to_goal < 0.5:  # small threshold around the goal
+             #angle_to_goal = 0.0
+             self.total_successes += 1
+             self.episode_success = 100
         
-        # progress = (prev_distance_to_goal - distance_to_goal)
-        # reward +=  progress * 5
+        progress = (prev_distance_to_goal - distance_to_goal)
+        # reward += progress * 5.5
+
+
+        if progress > 0 :
+            reward += 1
+        
+
+
+        angle_diff = angle_to_goal  # signed, not abs
+        reward += math.cos(angle_diff) * 0.3
+
+
+        if collision_detected:
+            reward -= 3.5
+
+        reward -= 0.05
+ 
+        
+        return reward
+        #print("Progress:", progress)
+        #reward +=  progress 
         
         # if abs(progress) < 0.001:
         #     reward -= 0.1
         
         # reward += math.cos(angle_to_goal) * 0.3
-
-        # # angle_diff = angle_to_goal  # signed, not abs
-        # # reward += math.cos(angle_diff) * 0.5  
-
-
-        # if collision_detected:
-        #     reward -= 2
-
-        # reward -= 0.05
- 
-        
-        return reward
 
     def random_starting_pos(self,obstacles, safe_radius=1.0):
         bounds = (-10, 10)
@@ -748,7 +766,9 @@ if __name__ == "__main__":
     #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
     callback = CaneCallback()
 
-    model.learn(total_timesteps=9000 * CaneEnv.MAX_TIMESTEPS,callback=callback)
+    #model.learn(total_timesteps=1000 * CaneEnv.MAX_TIMESTEPS,callback=callback)
+    model.learn(total_timesteps=500_000,callback=callback)
 
-    model.save("mlp_cane_model_26")
+    model.save("mlp_cane_model_33")
+    
     print("Model saved after training.")
