@@ -1,0 +1,5 @@
+collision_accuracy: 1.0
+false_positive_rate: 0.0
+missed_collision_rate: 0.0
+goal_success_rate: 0.0109
+avg_steps: 197.8393
