@@ -8,7 +8,7 @@ import math
 from gymnasium import spaces
 from collections import deque
 from stable_baselines3 import DQN
-#from stable_baselines3 import PPO
+from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import BaseCallback
 import os
@@ -510,8 +510,8 @@ class CaneEnv(gym.Env):
             self.episode_success = 1
             terminated = True
             goal_location = True
-            print(self.total_successes)
-            print("Goal Reached")
+            #print(self.total_successes)
+            #print("Goal Reached")
             
 
             info = {
@@ -580,22 +580,28 @@ class CaneEnv(gym.Env):
         #     print("Goal Reached")
         #     return 2000
         
-        if distance_to_goal < 0.5:  # small threshold around the goal
-             #angle_to_goal = 0.0
-             self.total_successes += 1
-             self.episode_success = 100
+        # if distance_to_goal < 0.5:  # small threshold around the goal
+        #      #angle_to_goal = 0.0
+        #      self.total_successes += 1
+        #      self.episode_success = 100
         
+        # progress = (prev_distance_to_goal - distance_to_goal)
+        # # reward += progress * 5.5
+
+
+        # if progress > 0 :
+        #     reward += 1
+        
+
+
+        # angle_diff = angle_to_goal  # signed, not abs
+        # reward += math.cos(angle_diff) * 0.3
+
         progress = (prev_distance_to_goal - distance_to_goal)
-        # reward += progress * 5.5
-
-
         if progress > 0 :
-            reward += 1
-        
-
-
-        angle_diff = angle_to_goal  # signed, not abs
-        reward += math.cos(angle_diff) * 0.3
+             reward += 3
+        #print("Progress:", progress)
+        # reward +=  progress * 5
 
 
         if collision_detected:
@@ -736,32 +742,53 @@ if __name__ == "__main__":
     #     device="auto"
     # )
     
-    model = DQN(
+    # model = DQN(
+    #     "MlpPolicy",
+    #     vec_env,
+    #     verbose=1,
+
+    #     learning_rate=5e-5,   # ↓ more stable than 1e-4
+    #     buffer_size=500_000,  # ↑ important for navigation tasks
+    #     learning_starts=10_000,  # ↑ prevents early bad Q-overfit
+
+    #     batch_size=128,       # ↑ smoother gradients
+
+    #     gamma=0.99,           # ↑ long-term planning (VERY important for navigation)
+
+    #     train_freq=4,
+    #     gradient_steps=1,
+
+    #     target_update_interval=2000,  # ↑ prevents Q oscillation
+
+    #     exploration_initial_eps=1.0,
+    #     exploration_final_eps=0.05,
+    #     exploration_fraction=0.3,
+
+    #     tensorboard_log="./tensorboard/hyperparameters/",
+    #     device="auto"
+    # )
+    ########## 6 June - PPO iterative training iterations, matching that of DQN
+    model = PPO(
         "MlpPolicy",
         vec_env,
         verbose=1,
 
-        learning_rate=5e-5,   # ↓ more stable than 1e-4
-        buffer_size=500_000,  # ↑ important for navigation tasks
-        learning_starts=10_000,  # ↑ prevents early bad Q-overfit
+        learning_rate=3e-4,      # standard PPO baseline (stable for MLP navigation)
 
-        batch_size=128,       # ↑ smoother gradients
+        n_steps=2048,            # rollout length before update
+        batch_size=64,           # matches your table
 
-        gamma=0.99,           # ↑ long-term planning (VERY important for navigation)
+        n_epochs=10,             # PPO optimization epochs per update
 
-        train_freq=4,
-        gradient_steps=1,
+        gamma=0.99,              # long-term navigation reward
+        gae_lambda=0.95,         # advantage estimation smoothing
 
-        target_update_interval=2000,  # ↑ prevents Q oscillation
+        clip_range=0.2,          # policy update constraint
+        ent_coef=0.01,           # exploration encouragement
 
-        exploration_initial_eps=1.0,
-        exploration_final_eps=0.05,
-        exploration_fraction=0.3,
-
-        tensorboard_log="./tensorboard/",
+        tensorboard_log="./tensorboard/hyperparameters/",
         device="auto"
     )
-
 
     #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
     callback = CaneCallback()
@@ -769,6 +796,6 @@ if __name__ == "__main__":
     #model.learn(total_timesteps=1000 * CaneEnv.MAX_TIMESTEPS,callback=callback)
     model.learn(total_timesteps=500_000,callback=callback)
 
-    model.save("mlp_cane_model_33")
+    model.save("PPO_attempts_01")
     
     print("Model saved after training.")
