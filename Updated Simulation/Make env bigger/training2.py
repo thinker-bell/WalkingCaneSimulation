@@ -592,11 +592,11 @@ class CaneEnv(gym.Env):
         if progress > 0 :
             reward += 1
         
-
-
         angle_diff = angle_to_goal  # signed, not abs
-        reward += math.cos(angle_diff) * 0.3
-
+        # #print(angle_diff)
+        # reward += math.cos(angle_diff) * 4
+        if math.cos(angle_diff) > 0.8:
+            reward += 2.5
 
         if collision_detected:
             reward -= 3.5
@@ -758,7 +758,7 @@ if __name__ == "__main__":
         exploration_final_eps=0.05,
         exploration_fraction=0.3,
 
-        tensorboard_log="./tensorboard/",
+        tensorboard_log="./WalkingCaneSimulation/tensorboard",
         device="auto"
     )
 
