@@ -594,12 +594,14 @@ class CaneEnv(gym.Env):
         
 
 
-        # angle_diff = angle_to_goal  # signed, not abs
-        # reward += math.cos(angle_diff) * 0.3
+        angle_diff = angle_to_goal  # signed, not abs
+        reward += math.cos(angle_diff) 
 
         progress = (prev_distance_to_goal - distance_to_goal)
         if progress > 0 :
-             reward += 3
+             reward += 1
+        else:
+            reward -= 0.05
         #print("Progress:", progress)
         # reward +=  progress * 5
 
@@ -786,7 +788,8 @@ if __name__ == "__main__":
         clip_range=0.2,          # policy update constraint
         ent_coef=0.01,           # exploration encouragement
 
-        tensorboard_log="./tensorboard/hyperparameters/",
+        #tensorboard_log="./tensorboard/hyperparameters/",
+        tensorboard_log=r"C:\Users\Ruchelle\Desktop\Walking Cane\WalkingCaneSimulation\tensorboard\hyperparameters",
         device="auto"
     )
 
