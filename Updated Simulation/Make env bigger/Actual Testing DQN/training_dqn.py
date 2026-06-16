@@ -579,30 +579,32 @@ class CaneEnv(gym.Env):
         # if goal_location:
         #     print("Goal Reached")
         #     return 2000
-
+        
         angle_diff = angle_to_goal  # signed, not abs
-        reward += math.cos(angle_diff) * 2
+        reward += math.cos(angle_diff) * 1.5
 
         # if math.cos(angle_diff) > 0.5:
         #     reward += 1.5
 
+
         progress = (prev_distance_to_goal - distance_to_goal)
         if progress > 0:
-            reward += progress * 3
+            reward += progress * 2
         else:
-            reward += progress * 1.0
+            reward += progress * 0.5
         #print("Progress:", progress)
-        #reward +=  progress * 1.5
+        #reward +=  progress * 5
 
 
         if collision_detected:
-            reward -= 4
-            reward -= 0.25 * abs(progress)
+            reward -= 5
+            reward -= 0.5 * abs(progress)
 
-        reward -= 0.8
+        reward -= 0.75
  
         
         return reward
+
 
     def random_starting_pos(self,obstacles, safe_radius=1.0):
         bounds = (-10, 10)
@@ -727,54 +729,54 @@ if __name__ == "__main__":
     #     device="auto"
     # )
     
-    # model = DQN(
-    #     "MlpPolicy",
-    #     vec_env,
-    #     verbose=1,
-
-    #     learning_rate=5e-5,   # ↓ more stable than 1e-4
-    #     buffer_size=500_000,  # ↑ important for navigation tasks
-    #     learning_starts=10_000,  # ↑ prevents early bad Q-overfit
-
-    #     batch_size=128,       # ↑ smoother gradients
-
-    #     gamma=0.99,           # ↑ long-term planning (VERY important for navigation)
-
-    #     train_freq=4,
-    #     gradient_steps=1,
-
-    #     target_update_interval=2000,  # ↑ prevents Q oscillation
-
-    #     exploration_initial_eps=1.0,
-    #     exploration_final_eps=0.05,
-    #     exploration_fraction=0.3,
-
-    #     tensorboard_log="./tensorboard/hyperparameters/",
-    #     device="auto"
-    # )
-    ########## 6 June - PPO iterative training iterations, matching that of DQN
-    model = PPO(
+    model = DQN(
         "MlpPolicy",
         vec_env,
         verbose=1,
 
-        learning_rate=3e-4,      # standard PPO baseline (stable for MLP navigation)
+        learning_rate=5e-5,   # ↓ more stable than 1e-4
+        buffer_size=500_000,  # ↑ important for navigation tasks
+        learning_starts=10_000,  # ↑ prevents early bad Q-overfit
 
-        n_steps=2048,            # rollout length before update
-        batch_size=64,           # matches your table
+        batch_size=128,       # ↑ smoother gradients
 
-        n_epochs=10,             # PPO optimization epochs per update
+        gamma=0.99,           # ↑ long-term planning (VERY important for navigation)
 
-        gamma=0.99,              # long-term navigation reward
-        gae_lambda=0.95,         # advantage estimation smoothing
+        train_freq=4,
+        gradient_steps=1,
 
-        clip_range=0.2,          # policy update constraint
-        ent_coef=0.01,           # exploration encouragement
+        target_update_interval=2000,  # ↑ prevents Q oscillation
 
-        #tensorboard_log="./tensorboard/hyperparameters/",
-        tensorboard_log=r"C:\Users\Ruchelle\Desktop\WalkingCane\WalkingCaneSimulation\tensorboard\hyperparameters",
+        exploration_initial_eps=1.0,
+        exploration_final_eps=0.05,
+        exploration_fraction=0.3,
+
+        tensorboard_log=r"C:\Users\Ruchelle\Desktop\WalkingCane\WalkingCaneSimulation\tensorboard\hyperparameters\DQN_Final",
         device="auto"
     )
+    ########## 6 June - PPO iterative training iterations, matching that of DQN
+    # model = PPO(
+    #     "MlpPolicy",
+    #     vec_env,
+    #     verbose=1,
+
+    #     learning_rate=3e-4,      # standard PPO baseline (stable for MLP navigation)
+
+    #     n_steps=2048,            # rollout length before update
+    #     batch_size=64,           # matches your table
+
+    #     n_epochs=10,             # PPO optimization epochs per update
+
+    #     gamma=0.99,              # long-term navigation reward
+    #     gae_lambda=0.95,         # advantage estimation smoothing
+
+    #     clip_range=0.2,          # policy update constraint
+    #     ent_coef=0.01,           # exploration encouragement
+
+    #     #tensorboard_log="./tensorboard/hyperparameters/",
+    #     tensorboard_log=r"C:\Users\Ruchelle\Desktop\WalkingCane\WalkingCaneSimulation\tensorboard\hyperparameters\DQN_Final",
+    #     device="auto"
+    # )
 
     #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
     callback = CaneCallback()
