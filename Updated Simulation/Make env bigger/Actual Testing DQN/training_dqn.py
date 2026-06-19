@@ -576,34 +576,29 @@ class CaneEnv(gym.Env):
     def compute_reward(self, goal_location, distance_to_goal, prev_distance_to_goal, collision_detected,angle_to_goal,prev_angle_to_goal,action):
         reward = 0.0
 
-        # if goal_location:
-        #     print("Goal Reached")
-        #     return 2000
-        
         angle_diff = angle_to_goal  # signed, not abs
         reward += math.cos(angle_diff) * 1.5
 
-        # if math.cos(angle_diff) > 0.5:
-        #     reward += 1.5
-
-
         progress = (prev_distance_to_goal - distance_to_goal)
-        if progress > 0:
-            reward += progress * 2
-        else:
-            reward += progress * 0.5
-        #print("Progress:", progress)
-        #reward +=  progress * 5
+        # if progress > 0:
+        #     reward += progress * 2.5
+        # else:
+        #     reward += progress * 0.75
 
+        if progress > 0:
+            reward += 0.75   
+        else:
+            reward -= 1.5   
 
         if collision_detected:
             reward -= 5
             reward -= 0.5 * abs(progress)
 
-        reward -= 0.75
+        reward -= 1
  
         
         return reward
+
 
 
     def random_starting_pos(self,obstacles, safe_radius=1.0):
@@ -751,7 +746,7 @@ if __name__ == "__main__":
         exploration_final_eps=0.05,
         exploration_fraction=0.3,
 
-        tensorboard_log=r"C:\Users\Ruchelle\Desktop\WalkingCane\WalkingCaneSimulation\tensorboard\hyperparameters\DQN_Final",
+        tensorboard_log=r"C:\Users\Ruchelle\Desktop\Walking Cane\WalkingCaneSimulation\tensorboard\hyperparameters\DQN_Final",
         device="auto"
     )
     ########## 6 June - PPO iterative training iterations, matching that of DQN

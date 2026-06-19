@@ -581,16 +581,22 @@ class CaneEnv(gym.Env):
         #     return 2000
 
         angle_diff = angle_to_goal  # signed, not abs
-        reward += math.cos(angle_diff) * 2
+        reward += math.cos(angle_diff) * 1.2
 
         # if math.cos(angle_diff) > 0.5:
         #     reward += 1.5
 
         progress = (prev_distance_to_goal - distance_to_goal)
+        # if progress > 0:
+        #     reward += progress * 3
+        # else:
+        #     reward += progress * 1
+
         if progress > 0:
-            reward += progress * 3
+            reward -= 0.5   
         else:
-            reward += progress * 1.0
+            reward -= 1.5   
+
         #print("Progress:", progress)
         #reward +=  progress * 1.5
 
@@ -772,7 +778,7 @@ if __name__ == "__main__":
         ent_coef=0.01,           # exploration encouragement
 
         #tensorboard_log="./tensorboard/hyperparameters/",
-        tensorboard_log=r"C:\Users\Ruchelle\Desktop\WalkingCane\WalkingCaneSimulation\tensorboard\hyperparameters",
+        tensorboard_log=r"C:\Users\Ruchelle\Desktop\Walking Cane\WalkingCaneSimulation\tensorboard\hyperparameters",
         device="auto"
     )
 
@@ -780,8 +786,8 @@ if __name__ == "__main__":
     callback = CaneCallback()
 
     #model.learn(total_timesteps=1000 * CaneEnv.MAX_TIMESTEPS,callback=callback)
-    model.learn(total_timesteps=4_000_000,callback=callback)
+    model.learn(total_timesteps=5_000_000,callback=callback)
 
-    model.save("PPO_attempts_01")
+    model.save("PPO_potential_final_attempt")
     
     print("Model saved after training.")
