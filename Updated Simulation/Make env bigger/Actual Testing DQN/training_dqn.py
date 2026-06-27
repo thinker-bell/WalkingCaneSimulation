@@ -580,15 +580,12 @@ class CaneEnv(gym.Env):
         reward += math.cos(angle_diff) * 1.5
 
         progress = (prev_distance_to_goal - distance_to_goal)
-        # if progress > 0:
-        #     reward += progress * 2.5
-        # else:
-        #     reward += progress * 0.75
-
-        if progress > 0:
-            reward += 0.75   
+        if progress > 0.05:
+            reward += progress * 3
+        elif progress > 0:
+            reward -= 0.5          # moving, but not enough
         else:
-            reward -= 1.5   
+            reward += progress
 
         if collision_detected:
             reward -= 5
@@ -598,6 +595,7 @@ class CaneEnv(gym.Env):
  
         
         return reward
+
 
 
 
@@ -777,7 +775,7 @@ if __name__ == "__main__":
     callback = CaneCallback()
 
     #model.learn(total_timesteps=1000 * CaneEnv.MAX_TIMESTEPS,callback=callback)
-    model.learn(total_timesteps=4_000_000,callback=callback)
+    model.learn(total_timesteps=2_500_000,callback=callback)
 
     model.save("PPO_attempts_01")
     

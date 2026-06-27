@@ -576,26 +576,23 @@ class CaneEnv(gym.Env):
     def compute_reward(self, goal_location, distance_to_goal, prev_distance_to_goal, collision_detected,angle_to_goal,prev_angle_to_goal,action):
         reward = 0.0
 
-        # if goal_location:
-        #     print("Goal Reached")
-        #     return 2000
-
         angle_diff = angle_to_goal  # signed, not abs
         reward += math.cos(angle_diff) * 1.2
 
-        # if math.cos(angle_diff) > 0.5:
-        #     reward += 1.5
+        #progress = (prev_distance_to_goal - distance_to_goal)
+        progress = prev_distance_to_goal - distance_to_goal
 
-        progress = (prev_distance_to_goal - distance_to_goal)
-        # if progress > 0:
-        #     reward += progress * 3
-        # else:
-        #     reward += progress * 1
-
-        if progress > 0:
-            reward -= 0.5   
+        if progress > 0.05:
+            reward += progress * 3
+        elif progress > 0:
+            reward -= 0.5          # moving, but not enough
         else:
-            reward -= 1.5   
+            reward += progress
+
+        # if progress > 0:
+        #     reward -= 0.5   
+        # else:
+        #     reward -= 1.5   
 
         #print("Progress:", progress)
         #reward +=  progress * 1.5
@@ -606,8 +603,7 @@ class CaneEnv(gym.Env):
             reward -= 0.25 * abs(progress)
 
         reward -= 0.8
- 
-        
+
         return reward
 
     def random_starting_pos(self,obstacles, safe_radius=1.0):
@@ -786,7 +782,7 @@ if __name__ == "__main__":
     callback = CaneCallback()
 
     #model.learn(total_timesteps=1000 * CaneEnv.MAX_TIMESTEPS,callback=callback)
-    model.learn(total_timesteps=5_000_000,callback=callback)
+    model.learn(total_timesteps=2_500_000,callback=callback)
 
     model.save("PPO_potential_final_attempt")
     
