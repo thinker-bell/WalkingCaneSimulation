@@ -158,7 +158,7 @@ class CaneEnv(gym.Env):
 
 
         self.obstacle_ids = []
-        num_obstacles = 40
+        num_obstacles = 20
         min_dist = 1.5  # Minimum spacing between any two
 
         positions = []
@@ -438,6 +438,7 @@ class CaneEnv(gym.Env):
 
         # let physics update (IMPORTANT for reliable contacts)
         p.stepSimulation()
+        #time.sleep(0.05)   # 20 FPS
 
         # =========================
         # 4. COLLISION DETECTION (OPTION A CORRECT WAY)
@@ -502,9 +503,9 @@ class CaneEnv(gym.Env):
         reward = 0.0
         goal_location = False
 
-        if distance_to_goal < 0.5:
+        if distance_to_goal < 1:
             
-            reward = 100
+            reward = 200
             self.total_successes += 1
             self.cumulative_reward += reward
             self.episode_success = 1
@@ -580,21 +581,38 @@ class CaneEnv(gym.Env):
         reward += math.cos(angle_diff) * 1.5
 
         progress = (prev_distance_to_goal - distance_to_goal)
-        if progress > 0.05:
-            reward += progress * 3
-        elif progress > 0:
-            reward -= 0.5          # moving, but not enough
+        if progress > 0:
+            reward += progress * 2.5
         else:
-            reward += progress
-
+            reward += progress * 0.75
+ 
         if collision_detected:
             reward -= 5
             reward -= 0.5 * abs(progress)
 
         reward -= 1
+        return reward
+
+
+        # angle_diff = angle_to_goal  # signed, not abs
+        # reward += math.cos(angle_diff) * 1.5
+
+        # progress = (prev_distance_to_goal - distance_to_goal)
+        # if progress > 0.05:
+        #     reward += progress * 3
+        # elif progress > 0:
+        #     reward -= 0.5          # moving, but not enough
+        # else:
+        #     reward += progress
+
+        # if collision_detected:
+        #     reward -= 5
+        #     reward -= 0.5 * abs(progress)
+
+        # reward -= 1
  
         
-        return reward
+        # return reward
 
 
 
@@ -666,11 +684,19 @@ class CaneEnv(gym.Env):
         self.prev_distance_to_goal = np.linalg.norm(np.array(pos) - self.goal_location)
         self.prev_angle_to_goal = 0
 
-        obs = np.zeros(23, dtype=np.float32)
+        # obs = np.zeros(23, dtype=np.float32)
 
-        self.done = False
+        # self.done = False
 
-        return obs, {}
+        # return obs, {}
+
+        obs, _, angle_to_goal = self.get_observation_with_swing()
+
+        pos, _ = p.getBasePositionAndOrientation(self.cane_id)
+        self.prev_distance_to_goal = np.linalg.norm(np.array(pos) - np.array(self.goal_location))
+        self.prev_angle_to_goal = angle_to_goal
+
+        return obs.astype(np.float32), {}
 
     
     def render(self, mode="human"):
@@ -679,7 +705,6 @@ class CaneEnv(gym.Env):
     def close(self):
         #if p.isConnected():
         p.disconnect()
-
 
 def make_env():
     """
@@ -693,35 +718,10 @@ if __name__ == "__main__":
     #env=CaneEnv()
 
     num_cpu = 8 
-    #vec_env = SubprocVecEnv([CaneEnv for _ in range(num_cpu)])
 
-    vec_env = DummyVecEnv([make_env for _ in range(num_cpu)])
+    vec_env = SubprocVecEnv([make_env for _ in range(num_cpu)])
+    #vec_env = DummyVecEnv([make_env for _ in range(num_cpu)])
 
-    #env = Monitor(env, filename=f"{log_dir}/cane_monitor_02.csv")
-    #env = Monitor(env)
-
-    #random.seed(1001)
-    
-    #model = DQN("MlpPolicy",env,verbose=1, exploration_initial_eps=0.8, exploration_final_eps=0.02, exploration_fraction=0.2, )
-    # model = DQN(
-    #     "MlpPolicy",
-    #     vec_env,
-    #     verbose=1,
-    #     learning_rate=1e-4, 
-    #     buffer_size=100_000,
-    #     learning_starts=50_000,
-    #     batch_size=64,
-    #     tau=1.0,  # Hard update (DQN default)
-    #     train_freq=4,
-    #     target_update_interval=500,
-    #     exploration_initial_eps=1.0,
-    #     exploration_final_eps=0.05,
-    #     exploration_fraction=0.2,  # decay over 20% of training
-    #     gamma=0.95,
-    #     tensorboard_log="./tensorboard/",
-    #     device="auto"
-    # )
-    
     model = DQN(
         "MlpPolicy",
         vec_env,
@@ -745,38 +745,70 @@ if __name__ == "__main__":
         exploration_fraction=0.3,
 
         tensorboard_log=r"C:\Users\Ruchelle\Desktop\Walking Cane\WalkingCaneSimulation\tensorboard\hyperparameters\DQN_Final",
-        device="auto"
+        device="auto",
+        seed=3
     )
-    ########## 6 June - PPO iterative training iterations, matching that of DQN
-    # model = PPO(
-    #     "MlpPolicy",
-    #     vec_env,
-    #     verbose=1,
-
-    #     learning_rate=3e-4,      # standard PPO baseline (stable for MLP navigation)
-
-    #     n_steps=2048,            # rollout length before update
-    #     batch_size=64,           # matches your table
-
-    #     n_epochs=10,             # PPO optimization epochs per update
-
-    #     gamma=0.99,              # long-term navigation reward
-    #     gae_lambda=0.95,         # advantage estimation smoothing
-
-    #     clip_range=0.2,          # policy update constraint
-    #     ent_coef=0.01,           # exploration encouragement
-
-    #     #tensorboard_log="./tensorboard/hyperparameters/",
-    #     tensorboard_log=r"C:\Users\Ruchelle\Desktop\WalkingCane\WalkingCaneSimulation\tensorboard\hyperparameters\DQN_Final",
-    #     device="auto"
-    # )
 
     #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
     callback = CaneCallback()
 
     #model.learn(total_timesteps=1000 * CaneEnv.MAX_TIMESTEPS,callback=callback)
-    model.learn(total_timesteps=2_500_000,callback=callback)
+    model.learn(total_timesteps=4_000_000,callback=callback)
 
-    model.save("PPO_attempts_01")
+    model.save("DQN_Final_Attempt_03")
     
     print("Model saved after training.")
+
+
+
+# def make_env():
+#     """
+#     Helper function to create a monitored environment for parallel processing.
+#     """
+#     env = CaneEnv(gui=False)  # GUI must be False for parallel workers
+#     env = Monitor(env) #, filename=f"{log_dir}/cane_26")
+#     return env
+
+# if __name__ == "__main__":
+#     #env=CaneEnv()
+
+#     num_cpu = 8 
+#     #vec_env = SubprocVecEnv([CaneEnv for _ in range(num_cpu)])
+
+#     vec_env = DummyVecEnv([make_env for _ in range(num_cpu)])
+
+#     model = DQN(
+#         "MlpPolicy",
+#         vec_env,
+#         verbose=1,
+
+#         learning_rate=5e-5,   # ↓ more stable than 1e-4
+#         buffer_size=500_000,  # ↑ important for navigation tasks
+#         learning_starts=10_000,  # ↑ prevents early bad Q-overfit
+
+#         batch_size=128,       # ↑ smoother gradients
+
+#         gamma=0.99,           # ↑ long-term planning (VERY important for navigation)
+
+#         train_freq=4,
+#         gradient_steps=1,
+
+#         target_update_interval=2000,  # ↑ prevents Q oscillation
+
+#         exploration_initial_eps=1.0,
+#         exploration_final_eps=0.05,
+#         exploration_fraction=0.3,
+
+#         tensorboard_log=r"C:\Users\Ruchelle\Desktop\Walking Cane\WalkingCaneSimulation\tensorboard\hyperparameters\DQN_Final",
+#         device="auto"
+#     )
+
+#     #model = DQN("MlpPolicy", env, verbose=1, tensorboard_log="./dqn_tensorboard/")
+#     callback = CaneCallback()
+
+#     #model.learn(total_timesteps=1000 * CaneEnv.MAX_TIMESTEPS,callback=callback)
+#     model.learn(total_timesteps=2_000_000,callback=callback)
+
+#     model.save("DQN_Final_Attempt_01")
+    
+#     print("Model saved after training.")
