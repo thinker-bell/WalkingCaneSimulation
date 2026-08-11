@@ -1,9 +1,9 @@
 Metric,Value
-Success Rate (%),1.0
-Average Reward,118.2091102109819
-Reward Std,63.58085609894819
-Average Episode Length,198.0
-Episode Length Std,19.94968545488233
-Average Collisions,2.855
-Collision Std,11.473542867381822
-Average Inference Time (ms),0.21896457772236316
+Success Rate (%),99.5
+Average Reward,217.97341598205733
+Reward Std,18.385520650878398
+Average Episode Length,20.66
+Episode Length Std,17.112527369293645
+Average Collisions,1.04
+Collision Std,2.1167909722267106
+Average Inference Time (ms),0.17667662921234345

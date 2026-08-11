@@ -4,7 +4,7 @@ import pandas as pd
 from stable_baselines3 import PPO, DQN
 
 # Import your environment
-from training_dqn import CaneEnv     # <-- Replace with your filename
+from training_double_dqn import CaneEnv     # <-- Replace with your filename
 
 
 # ==========================================================
@@ -12,7 +12,7 @@ from training_dqn import CaneEnv     # <-- Replace with your filename
 # ==========================================================
 
 MODEL_TYPE = "DQN"               # Change to "DQN" when evaluating DQN
-MODEL_PATH = "DQN_Final_Attempt.zip"
+MODEL_PATH = "DoubleDQN_attempt5.zip"
 print(MODEL_PATH)
 NUM_EPISODES = 200
 GUI = False

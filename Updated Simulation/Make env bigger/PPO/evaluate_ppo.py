@@ -2,18 +2,17 @@ import time
 import numpy as np
 import pandas as pd
 from stable_baselines3 import PPO, DQN
-
+import pybullet as p
 # Import your environment
-from training_dqn import CaneEnv     # <-- Replace with your filename
+from training2 import CaneEnv     # <-- Replace with your filename
 
 
 # ==========================================================
 # SETTINGS
 # ==========================================================
 
-MODEL_TYPE = "DQN"               # Change to "DQN" when evaluating DQN
-MODEL_PATH = "DQN_Final_Attempt.zip"
-print(MODEL_PATH)
+MODEL_TYPE = "PPO"               # Change to "DQN" when evaluating DQN
+MODEL_PATH = "PPO_attempts_01.zip"
 NUM_EPISODES = 200
 GUI = False
 
@@ -63,7 +62,16 @@ for episode in range(NUM_EPISODES):
 
         obs, reward, terminated, truncated, info = env.step(action)
 
+
         episode_reward += reward
+
+    final_pos, _ = p.getBasePositionAndOrientation(env.cane_id)
+    final_distance = np.linalg.norm(np.array(final_pos) - env.goal_location)
+
+    print(
+        f"Episode {episode+1} | "
+        f"Distance to goal: {final_distance:.2f}"
+    )
 
     success = int(info["goal_reached"])
 
